@@ -1,6 +1,6 @@
 # 🚌 School Transport Management API - Complete Endpoints List
 
-**Base URL**: `http://localhost:8000/api/v1`
+**Base URL**: `http://72.62.196.30:8001/api/v1`
 
 ## 🔐 Authentication (4 endpoints)
 | Method | Endpoint | Description |
@@ -96,6 +96,6 @@
 - **DELETE**: 8 endpoints (Delete operations)
 
 ## 🔗 Quick Links
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-- **API Base**: http://localhost:8000/api/v1
+- **Swagger UI**: http://72.62.196.30:8001/docs
+- **ReDoc**: http://72.62.196.30:8001/redoc
+- **API Base**: http://72.62.196.30:8001/api/v1
