@@ -11,33 +11,27 @@ settings = get_settings()
 app = FastAPI(
     title="🚌 School Transport Management API",
     description="""
-    ## Complete API for School Transport Management System
+    ## Simple School Transport Management API
     
     ### 🔐 Authentication
-    - **Admin**: Password-based login
-    - **Parents/Drivers**: OTP-based login
+    - **All Users**: Phone number + Password login
     
     ### 📊 Features
-    - **48 Endpoints** for complete CRUD operations
+    - **Complete CRUD operations** for all entities
     - **8 Entities**: Admins, Parents, Drivers, Routes, Buses, Route Stops, Students, Trips
     - **JWT Authentication** with role-based access
-    - **Input Validation** and error handling
+    - **Simple phone + password authentication**
     
     ### 🚀 Quick Start
     1. Create admin: `POST /api/v1/admins`
-    2. Login admin: `POST /api/v1/auth/admin/login`
+    2. Login: `POST /api/v1/auth/login` (works for all user types)
     3. Use Bearer token for authenticated endpoints
-    
-    ### 📱 For Parents/Drivers
-    1. Admin creates account: `POST /api/v1/parents` or `POST /api/v1/drivers`
-    2. Request OTP: `POST /api/v1/auth/send-otp`
-    3. Verify OTP: `POST /api/v1/auth/verify-otp`
     """,
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_tags=[
-        {"name": "Authentication", "description": "🔐 Login and OTP operations"},
+        {"name": "Authentication", "description": "🔐 Login operations"},
         {"name": "Admins", "description": "👨‍💼 Admin management"},
         {"name": "Parents", "description": "👨‍👩‍👧‍👦 Parent management"},
         {"name": "Drivers", "description": "🚗 Driver management"},

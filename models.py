@@ -88,7 +88,7 @@ class ParentBase(BaseModel):
         return v
 
 class ParentCreate(ParentBase):
-    pass  # No password needed, admin creates parent with phone only
+    password: str = Field(..., min_length=6)  # Password required for login
 
 class ParentUpdate(BaseModel):
     phone: Optional[int] = Field(None, ge=1000000000, le=9999999999)
@@ -132,7 +132,7 @@ class DriverBase(BaseModel):
     device_id: Optional[str] = Field(None, max_length=255)
 
 class DriverCreate(DriverBase):
-    pass
+    password: str = Field(..., min_length=6)  # Password required for login
 
 class DriverUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
@@ -337,23 +337,7 @@ class TokenData(BaseModel):
     user_type: Optional[str] = None
     phone: Optional[int] = None
 
-# OTP-based authentication models
-class OTPRequest(BaseModel):
-    phone: int = Field(..., ge=1000000000, le=9999999999)
-    user_type: UserType
-
-class OTPVerify(BaseModel):
-    phone: int = Field(..., ge=1000000000, le=9999999999)
-    otp: str = Field(..., min_length=6, max_length=6)
-    user_type: UserType
-
-class OTPResponse(BaseModel):
-    message: str
-    phone: int
-    otp: Optional[str] = None  # Only in development
-    expires_in_minutes: int
-
-# Admin password login (for initial setup only)
-class AdminLoginRequest(BaseModel):
+# Universal login model (phone + password)
+class LoginRequest(BaseModel):
     phone: int = Field(..., ge=1000000000, le=9999999999)
     password: str

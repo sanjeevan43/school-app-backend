@@ -5,7 +5,6 @@ import uuid
 from database import get_db
 from models import *
 from auth import get_password_hash, verify_password, create_access_token, get_current_admin, get_current_parent, get_current_user
-from otp_service import OTPService
 
 router = APIRouter()
 
@@ -47,51 +46,36 @@ def update_entity(cursor, table: str, id_col: str, entity_id: str, update_data: 
 # AUTHENTICATION ROUTES
 # =====================================================
 
-@router.post("/auth/admin/login", response_model=Token, tags=["Authentication"])
-async def admin_login(login_data: AdminLoginRequest):
-    """Admin login"""
+@router.post("/auth/login", response_model=Token, tags=["Authentication"])
+async def login(login_data: LoginRequest):
+    """Universal login for all user types (admin, parent, driver)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT admin_id, password_hash, status FROM admins WHERE phone = %s", (login_data.phone,))
-            admin = cursor.fetchone()
+            # Try admin first
+            cursor.execute("SELECT admin_id as user_id, password_hash, status, 'admin' as user_type FROM admins WHERE phone = %s", (login_data.phone,))
+            user = cursor.fetchone()
             
-            if not admin or not verify_password(login_data.password, admin['password_hash']):
-                raise HTTPException(status_code=401, detail="Invalid credentials")
-            if admin['status'] != 'ACTIVE':
+            # Try parent if admin not found
+            if not user:
+                cursor.execute("SELECT parent_id as user_id, password_hash, status, 'parent' as user_type FROM parents WHERE phone = %s", (login_data.phone,))
+                user = cursor.fetchone()
+            
+            # Try driver if parent not found
+            if not user:
+                cursor.execute("SELECT driver_id as user_id, password_hash, status, 'driver' as user_type FROM drivers WHERE phone = %s", (login_data.phone,))
+                user = cursor.fetchone()
+            
+            if not user or not verify_password(login_data.password, user['password_hash']):
+                raise HTTPException(status_code=401, detail="Invalid phone number or password")
+            if user['status'] != 'ACTIVE':
                 raise HTTPException(status_code=403, detail="Account inactive")
             
-            cursor.execute("UPDATE admins SET last_login_at = %s WHERE admin_id = %s", (datetime.utcnow(), admin['admin_id']))
-            access_token = create_access_token(data={"sub": admin['admin_id'], "user_type": "admin", "phone": login_data.phone})
-            return {"access_token": access_token, "token_type": "bearer"}
-
-@router.post("/auth/send-otp", response_model=OTPResponse, tags=["Authentication"])
-async def send_otp(otp_request: OTPRequest):
-    """Send OTP"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            check_user_exists_and_active(cursor, otp_request.phone, otp_request.user_type)
-            return OTPService.send_otp(otp_request.phone)
-
-@router.post("/auth/verify-otp", response_model=Token, tags=["Authentication"])
-async def verify_otp(otp_verify: OTPVerify):
-    """Verify OTP"""
-    if not OTPService.verify_otp(otp_verify.phone, otp_verify.otp):
-        raise HTTPException(status_code=401, detail="Invalid or expired OTP")
-    
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            user = check_user_exists_and_active(cursor, otp_verify.phone, otp_verify.user_type)
-            table = "parents" if otp_verify.user_type == "parent" else "drivers"
-            id_col = f"{table[:-1]}_id"
+            # Update last login for admin
+            if user['user_type'] == 'admin':
+                cursor.execute("UPDATE admins SET last_login_at = %s WHERE admin_id = %s", (datetime.utcnow(), user['user_id']))
             
-            OTPService.clear_otp(otp_verify.phone)
-            access_token = create_access_token(data={"sub": user[id_col], "user_type": otp_verify.user_type.value, "phone": otp_verify.phone})
+            access_token = create_access_token(data={"sub": user['user_id'], "user_type": user['user_type'], "phone": login_data.phone})
             return {"access_token": access_token, "token_type": "bearer"}
-
-@router.post("/auth/resend-otp", response_model=OTPResponse, tags=["Authentication"])
-async def resend_otp(otp_request: OTPRequest):
-    """Resend OTP"""
-    return OTPService.resend_otp(otp_request.phone)
 
 # =====================================================
 # ADMIN ROUTES
@@ -202,7 +186,7 @@ async def delete_admin(admin_id: str, current_admin: str = Depends(get_current_a
 
 @router.post("/parents", response_model=ParentResponse, status_code=status.HTTP_201_CREATED, tags=["Parents"])
 async def create_parent(parent: ParentCreate, admin_id: str = Depends(get_current_admin)):
-    """Create a new parent (admin only) - No password needed, uses OTP for login"""
+    """Create a new parent (admin only) - Password required for login"""
     with get_db() as conn:
         with conn.cursor() as cursor:
             # Check if phone already exists
@@ -223,13 +207,13 @@ async def create_parent(parent: ParentCreate, admin_id: str = Depends(get_curren
                     )
             
             parent_id = str(uuid.uuid4())
-            # No password needed - parents login with OTP
+            password_hash = get_password_hash(parent.password)
             
             cursor.execute(
                 """INSERT INTO parents (parent_id, phone, email, password_hash, name, dob, 
                    parent_role, door_no, street, city, district, state, country, pincode, emergency_contact)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (parent_id, parent.phone, parent.email, '', parent.name, parent.dob,
+                (parent_id, parent.phone, parent.email, password_hash, parent.name, parent.dob,
                  parent.parent_role, parent.door_no, parent.street, parent.city, parent.district,
                  parent.state, parent.country, parent.pincode, parent.emergency_contact)
             )
@@ -307,7 +291,7 @@ async def delete_parent(parent_id: str, admin_id: str = Depends(get_current_admi
 
 @router.post("/drivers", response_model=DriverResponse, status_code=status.HTTP_201_CREATED, tags=["Drivers"])
 async def create_driver(driver: DriverCreate, admin_id: str = Depends(get_current_admin)):
-    """Create a new driver (admin only)"""
+    """Create a new driver (admin only) - Password required for login"""
     with get_db() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT driver_id FROM drivers WHERE phone = %s", (driver.phone,))
@@ -318,12 +302,13 @@ async def create_driver(driver: DriverCreate, admin_id: str = Depends(get_curren
                 )
             
             driver_id = str(uuid.uuid4())
+            password_hash = get_password_hash(driver.password)
             
             cursor.execute(
-                """INSERT INTO drivers (driver_id, name, phone, email, dob, licence_number, 
+                """INSERT INTO drivers (driver_id, name, phone, email, password_hash, dob, licence_number, 
                    licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, device_id)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (driver_id, driver.name, driver.phone, driver.email, driver.dob,
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (driver_id, driver.name, driver.phone, driver.email, password_hash, driver.dob,
                  driver.licence_number, driver.licence_expiry, driver.aadhar_number,
                  driver.licence_url, driver.aadhar_url, driver.photo_url, driver.device_id)
             )
