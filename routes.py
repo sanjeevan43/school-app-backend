@@ -77,6 +77,27 @@ async def login(login_data: LoginRequest):
             access_token = create_access_token(data={"sub": user['user_id'], "user_type": user['user_type'], "phone": login_data.phone})
             return {"access_token": access_token, "token_type": "bearer"}
 
+@router.get("/auth/me", tags=["Authentication"])
+async def get_current_user_profile(current_user = Depends(get_current_user)):
+    """Get current authenticated user's profile"""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            if current_user.user_type == "admin":
+                cursor.execute("SELECT * FROM admins WHERE admin_id = %s", (current_user.user_id,))
+            elif current_user.user_type == "parent":
+                cursor.execute("SELECT * FROM parents WHERE parent_id = %s", (current_user.user_id,))
+            elif current_user.user_type == "driver":
+                cursor.execute("SELECT * FROM drivers WHERE driver_id = %s", (current_user.user_id,))
+            
+            user_data = cursor.fetchone()
+            if not user_data:
+                raise HTTPException(status_code=404, detail="User not found")
+            
+            return {
+                "user_type": current_user.user_type,
+                "profile": user_data
+            }
+
 # =====================================================
 # ADMIN ROUTES
 # =====================================================
