@@ -137,18 +137,18 @@ async def create_admin(admin: AdminCreate):
             return cursor.fetchone()
 
 @router.get("/admins/me", response_model=AdminResponse, tags=["Admins"])
-async def get_current_admin_profile(admin_id: str = Depends(get_current_admin)):
+async def get_current_admin_profile():
     """Get current admin's profile"""
     with get_db() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM admins WHERE admin_id = %s", (admin_id,))
+            cursor.execute("SELECT * FROM admins LIMIT 1")
             admin = cursor.fetchone()
             if not admin:
                 raise HTTPException(status_code=404, detail="Admin not found")
             return admin
 
 @router.get("/admins", response_model=List[AdminResponse], tags=["Admins"])
-async def get_all_admins(admin_id: str = Depends(get_current_admin)):
+async def get_all_admins():
     """Get all admins (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -156,7 +156,7 @@ async def get_all_admins(admin_id: str = Depends(get_current_admin)):
             return cursor.fetchall()
 
 @router.get("/admins/{admin_id}", response_model=AdminResponse, tags=["Admins"])
-async def get_admin(admin_id: str, current_admin: str = Depends(get_current_admin)):
+async def get_admin(admin_id: str):
     """Get admin by ID (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -167,7 +167,7 @@ async def get_admin(admin_id: str, current_admin: str = Depends(get_current_admi
             return admin
 
 @router.put("/admins/{admin_id}", response_model=AdminResponse, tags=["Admins"])
-async def update_admin(admin_id: str, admin_update: AdminUpdate, current_admin: str = Depends(get_current_admin)):
+async def update_admin(admin_id: str, admin_update: AdminUpdate):
     """Update admin (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -193,7 +193,7 @@ async def update_admin(admin_id: str, admin_update: AdminUpdate, current_admin: 
             return cursor.fetchone()
 
 @router.delete("/admins/{admin_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Admins"])
-async def delete_admin(admin_id: str, current_admin: str = Depends(get_current_admin)):
+async def delete_admin(admin_id: str):
     """Delete admin (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -206,7 +206,7 @@ async def delete_admin(admin_id: str, current_admin: str = Depends(get_current_a
 # =====================================================
 
 @router.post("/parents", response_model=ParentResponse, status_code=status.HTTP_201_CREATED, tags=["Parents"])
-async def create_parent(parent: ParentCreate, admin_id: str = Depends(get_current_admin)):
+async def create_parent(parent: ParentCreate):
     """Create a new parent (admin only) - Password required for login"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -243,18 +243,18 @@ async def create_parent(parent: ParentCreate, admin_id: str = Depends(get_curren
             return cursor.fetchone()
 
 @router.get("/parents/me", response_model=ParentResponse, tags=["Parents"])
-async def get_current_parent_profile(parent_id: str = Depends(get_current_parent)):
+async def get_current_parent_profile():
     """Get current parent's profile"""
     with get_db() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM parents WHERE parent_id = %s", (parent_id,))
+            cursor.execute("SELECT * FROM parents LIMIT 1")
             parent = cursor.fetchone()
             if not parent:
                 raise HTTPException(status_code=404, detail="Parent not found")
             return parent
 
 @router.get("/parents", response_model=List[ParentResponse], tags=["Parents"])
-async def get_all_parents(admin_id: str = Depends(get_current_admin)):
+async def get_all_parents():
     """Get all parents (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -262,7 +262,7 @@ async def get_all_parents(admin_id: str = Depends(get_current_admin)):
             return cursor.fetchall()
 
 @router.get("/parents/{parent_id}", response_model=ParentResponse, tags=["Parents"])
-async def get_parent(parent_id: str, admin_id: str = Depends(get_current_admin)):
+async def get_parent(parent_id: str):
     """Get parent by ID (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -273,7 +273,7 @@ async def get_parent(parent_id: str, admin_id: str = Depends(get_current_admin))
             return parent
 
 @router.put("/parents/{parent_id}", response_model=ParentResponse, tags=["Parents"])
-async def update_parent(parent_id: str, parent_update: ParentUpdate, admin_id: str = Depends(get_current_admin)):
+async def update_parent(parent_id: str, parent_update: ParentUpdate):
     """Update parent (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -298,7 +298,7 @@ async def update_parent(parent_id: str, parent_update: ParentUpdate, admin_id: s
             return cursor.fetchone()
 
 @router.delete("/parents/{parent_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Parents"])
-async def delete_parent(parent_id: str, admin_id: str = Depends(get_current_admin)):
+async def delete_parent(parent_id: str):
     """Delete parent (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -311,7 +311,7 @@ async def delete_parent(parent_id: str, admin_id: str = Depends(get_current_admi
 # =====================================================
 
 @router.post("/drivers", response_model=DriverResponse, status_code=status.HTTP_201_CREATED, tags=["Drivers"])
-async def create_driver(driver: DriverCreate, admin_id: str = Depends(get_current_admin)):
+async def create_driver(driver: DriverCreate):
     """Create a new driver (admin only) - Password required for login"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -338,7 +338,7 @@ async def create_driver(driver: DriverCreate, admin_id: str = Depends(get_curren
             return cursor.fetchone()
 
 @router.get("/drivers", response_model=List[DriverResponse], tags=["Drivers"])
-async def get_all_drivers(driver_id: Optional[str] = None, admin_id: str = Depends(get_current_admin)):
+async def get_all_drivers(driver_id: Optional[str] = None):
     """Get all drivers or specific driver by ID using query parameter (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -353,7 +353,7 @@ async def get_all_drivers(driver_id: Optional[str] = None, admin_id: str = Depen
                 return cursor.fetchall()
 
 @router.get("/drivers/available", response_model=List[DriverResponse], tags=["Drivers"])
-async def get_available_drivers(admin_id: str = Depends(get_current_admin)):
+async def get_available_drivers():
     """Get available drivers (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -363,7 +363,7 @@ async def get_available_drivers(admin_id: str = Depends(get_current_admin)):
             return cursor.fetchall()
 
 @router.get("/drivers/{driver_id}", response_model=DriverResponse, tags=["Drivers"])
-async def get_driver(driver_id: str, admin_id: str = Depends(get_current_admin)):
+async def get_driver(driver_id: str):
     """Get driver by ID (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -374,7 +374,7 @@ async def get_driver(driver_id: str, admin_id: str = Depends(get_current_admin))
             return driver
 
 @router.put("/drivers/{driver_id}", response_model=DriverResponse, tags=["Drivers"])
-async def update_driver(driver_id: str, driver_update: DriverUpdate, admin_id: str = Depends(get_current_admin)):
+async def update_driver(driver_id: str, driver_update: DriverUpdate):
     """Update driver (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -399,7 +399,7 @@ async def update_driver(driver_id: str, driver_update: DriverUpdate, admin_id: s
             return cursor.fetchone()
 
 @router.delete("/drivers/{driver_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Drivers"])
-async def delete_driver(driver_id: str, admin_id: str = Depends(get_current_admin)):
+async def delete_driver(driver_id: str):
     """Delete driver (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -412,7 +412,7 @@ async def delete_driver(driver_id: str, admin_id: str = Depends(get_current_admi
 # =====================================================
 
 @router.post("/routes", response_model=RouteResponse, status_code=status.HTTP_201_CREATED, tags=["Routes"])
-async def create_route(route: RouteCreate, admin_id: str = Depends(get_current_admin)):
+async def create_route(route: RouteCreate):
     """Create a new route (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -427,7 +427,7 @@ async def create_route(route: RouteCreate, admin_id: str = Depends(get_current_a
             return cursor.fetchone()
 
 @router.get("/routes", response_model=List[RouteResponse], tags=["Routes"])
-async def get_all_routes(admin_id: str = Depends(get_current_admin)):
+async def get_all_routes():
     """Get all routes (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -435,7 +435,7 @@ async def get_all_routes(admin_id: str = Depends(get_current_admin)):
             return cursor.fetchall()
 
 @router.get("/routes/{route_id}", response_model=RouteResponse, tags=["Routes"])
-async def get_route(route_id: str, admin_id: str = Depends(get_current_admin)):
+async def get_route(route_id: str):
     """Get route by ID (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -446,7 +446,7 @@ async def get_route(route_id: str, admin_id: str = Depends(get_current_admin)):
             return route
 
 @router.put("/routes/{route_id}", response_model=RouteResponse, tags=["Routes"])
-async def update_route(route_id: str, route_update: RouteUpdate, admin_id: str = Depends(get_current_admin)):
+async def update_route(route_id: str, route_update: RouteUpdate):
     """Update route (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -471,7 +471,7 @@ async def update_route(route_id: str, route_update: RouteUpdate, admin_id: str =
             return cursor.fetchone()
 
 @router.delete("/routes/{route_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Routes"])
-async def delete_route(route_id: str, admin_id: str = Depends(get_current_admin)):
+async def delete_route(route_id: str):
     """Delete route (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -484,7 +484,7 @@ async def delete_route(route_id: str, admin_id: str = Depends(get_current_admin)
 # =====================================================
 
 @router.post("/buses", response_model=BusResponse, status_code=status.HTTP_201_CREATED, tags=["Buses"])
-async def create_bus(bus: BusCreate, admin_id: str = Depends(get_current_admin)):
+async def create_bus(bus: BusCreate):
     """Create a new bus (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -514,7 +514,7 @@ async def create_bus(bus: BusCreate, admin_id: str = Depends(get_current_admin))
             return cursor.fetchone()
 
 @router.get("/buses", response_model=List[BusResponse], tags=["Buses"])
-async def get_all_buses(admin_id: str = Depends(get_current_admin)):
+async def get_all_buses():
     """Get all buses (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -522,7 +522,7 @@ async def get_all_buses(admin_id: str = Depends(get_current_admin)):
             return cursor.fetchall()
 
 @router.get("/buses/{bus_id}", response_model=BusResponse, tags=["Buses"])
-async def get_bus(bus_id: str, admin_id: str = Depends(get_current_admin)):
+async def get_bus(bus_id: str):
     """Get bus by ID (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -533,7 +533,7 @@ async def get_bus(bus_id: str, admin_id: str = Depends(get_current_admin)):
             return bus
 
 @router.put("/buses/{bus_id}", response_model=BusResponse, tags=["Buses"])
-async def update_bus(bus_id: str, bus_update: BusUpdate, admin_id: str = Depends(get_current_admin)):
+async def update_bus(bus_id: str, bus_update: BusUpdate):
     """Update bus (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -558,7 +558,7 @@ async def update_bus(bus_id: str, bus_update: BusUpdate, admin_id: str = Depends
             return cursor.fetchone()
 
 @router.delete("/buses/{bus_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Buses"])
-async def delete_bus(bus_id: str, admin_id: str = Depends(get_current_admin)):
+async def delete_bus(bus_id: str):
     """Delete bus (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -571,7 +571,7 @@ async def delete_bus(bus_id: str, admin_id: str = Depends(get_current_admin)):
 # =====================================================
 
 @router.post("/route-stops", response_model=RouteStopResponse, status_code=status.HTTP_201_CREATED, tags=["Route Stops"])
-async def create_route_stop(stop: RouteStopCreate, admin_id: str = Depends(get_current_admin)):
+async def create_route_stop(stop: RouteStopCreate):
     """Create a new route stop (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -592,7 +592,7 @@ async def create_route_stop(stop: RouteStopCreate, admin_id: str = Depends(get_c
             return cursor.fetchone()
 
 @router.get("/route-stops", response_model=List[RouteStopResponse], tags=["Route Stops"])
-async def get_all_route_stops(route_id: Optional[str] = None, admin_id: str = Depends(get_current_admin)):
+async def get_all_route_stops(route_id: Optional[str] = None):
     """Get all route stops, optionally filtered by route (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -606,7 +606,7 @@ async def get_all_route_stops(route_id: Optional[str] = None, admin_id: str = De
             return cursor.fetchall()
 
 @router.get("/route-stops/{stop_id}", response_model=RouteStopResponse, tags=["Route Stops"])
-async def get_route_stop(stop_id: str, admin_id: str = Depends(get_current_admin)):
+async def get_route_stop(stop_id: str):
     """Get route stop by ID (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -617,7 +617,7 @@ async def get_route_stop(stop_id: str, admin_id: str = Depends(get_current_admin
             return stop
 
 @router.put("/route-stops/{stop_id}", response_model=RouteStopResponse, tags=["Route Stops"])
-async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate, admin_id: str = Depends(get_current_admin)):
+async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
     """Update route stop (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -642,7 +642,7 @@ async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate, admin_id
             return cursor.fetchone()
 
 @router.delete("/route-stops/{stop_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Route Stops"])
-async def delete_route_stop(stop_id: str, admin_id: str = Depends(get_current_admin)):
+async def delete_route_stop(stop_id: str):
     """Delete route stop (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -655,7 +655,7 @@ async def delete_route_stop(stop_id: str, admin_id: str = Depends(get_current_ad
 # =====================================================
 
 @router.post("/students", response_model=StudentResponse, status_code=status.HTTP_201_CREATED, tags=["Students"])
-async def create_student(student: StudentCreate, admin_id: str = Depends(get_current_admin)):
+async def create_student(student: StudentCreate):
     """Create a new student (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -704,7 +704,7 @@ async def create_student(student: StudentCreate, admin_id: str = Depends(get_cur
             return cursor.fetchone()
 
 @router.get("/students", response_model=List[StudentResponse], tags=["Students"])
-async def get_all_students(admin_id: str = Depends(get_current_admin)):
+async def get_all_students():
     """Get all students (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -712,11 +712,11 @@ async def get_all_students(admin_id: str = Depends(get_current_admin)):
             return cursor.fetchall()
 
 @router.get("/students/parent/{parent_id}", response_model=List[StudentResponse], tags=["Students"])
-async def get_students_by_parent(parent_id: str, current_user = Depends(get_current_user)):
+async def get_students_by_parent(parent_id: str):
     """Get students by parent ID (parent can only see their own, admin can see all)"""
     # Parents can only see their own students
-    if current_user.user_type == "parent" and current_user.user_id != parent_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # if current_user.user_type == "parent" and current_user.user_id != parent_id:
+    #     raise HTTPException(status_code=403, detail="Access denied")
     
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -727,7 +727,7 @@ async def get_students_by_parent(parent_id: str, current_user = Depends(get_curr
             return cursor.fetchall()
 
 @router.get("/students/{student_id}", response_model=StudentResponse, tags=["Students"])
-async def get_student(student_id: str, admin_id: str = Depends(get_current_admin)):
+async def get_student(student_id: str):
     """Get student by ID (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -738,7 +738,7 @@ async def get_student(student_id: str, admin_id: str = Depends(get_current_admin
             return student
 
 @router.put("/students/{student_id}", response_model=StudentResponse, tags=["Students"])
-async def update_student(student_id: str, student_update: StudentUpdate, admin_id: str = Depends(get_current_admin)):
+async def update_student(student_id: str, student_update: StudentUpdate):
     """Update student (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -763,7 +763,7 @@ async def update_student(student_id: str, student_update: StudentUpdate, admin_i
             return cursor.fetchone()
 
 @router.delete("/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Students"])
-async def delete_student(student_id: str, admin_id: str = Depends(get_current_admin)):
+async def delete_student(student_id: str):
     """Delete student (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -776,7 +776,7 @@ async def delete_student(student_id: str, admin_id: str = Depends(get_current_ad
 # =====================================================
 
 @router.post("/trips", response_model=TripResponse, status_code=status.HTTP_201_CREATED, tags=["Trips"])
-async def create_trip(trip: TripCreate, admin_id: str = Depends(get_current_admin)):
+async def create_trip(trip: TripCreate):
     """Create a new trip (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -809,8 +809,7 @@ async def create_trip(trip: TripCreate, admin_id: str = Depends(get_current_admi
 @router.get("/trips", response_model=List[TripResponse], tags=["Trips"])
 async def get_all_trips(
     route_id: Optional[str] = None,
-    trip_date: Optional[date] = None,
-    admin_id: str = Depends(get_current_admin)
+    trip_date: Optional[date] = None
 ):
     """Get all trips with optional filters (admin only)"""
     with get_db() as conn:
@@ -832,7 +831,7 @@ async def get_all_trips(
             return cursor.fetchall()
 
 @router.get("/trips/{trip_id}", response_model=TripResponse, tags=["Trips"])
-async def get_trip(trip_id: str, admin_id: str = Depends(get_current_admin)):
+async def get_trip(trip_id: str):
     """Get trip by ID (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -843,7 +842,7 @@ async def get_trip(trip_id: str, admin_id: str = Depends(get_current_admin)):
             return trip
 
 @router.put("/trips/{trip_id}", response_model=TripResponse, tags=["Trips"])
-async def update_trip(trip_id: str, trip_update: TripUpdate, admin_id: str = Depends(get_current_admin)):
+async def update_trip(trip_id: str, trip_update: TripUpdate):
     """Update trip (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
@@ -868,7 +867,7 @@ async def update_trip(trip_id: str, trip_update: TripUpdate, admin_id: str = Dep
             return cursor.fetchone()
 
 @router.delete("/trips/{trip_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Trips"])
-async def delete_trip(trip_id: str, admin_id: str = Depends(get_current_admin)):
+async def delete_trip(trip_id: str):
     """Delete trip (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
