@@ -9,20 +9,20 @@ settings = get_settings()
 
 # Enhanced FastAPI app with comprehensive Swagger UI
 app = FastAPI(
-    title="School Transport Management API",
+    title="🚌 School Transport Management API",
     description="""
-    ## School Transport Management API
+    ## Simple School Transport Management API
     
-    ### Authentication
+    ### 🔐 Authentication
     - **All Users**: Phone number + Password login
     
-    ### Features
+    ### 📊 Features
     - **Complete CRUD operations** for all entities
     - **8 Entities**: Admins, Parents, Drivers, Routes, Buses, Route Stops, Students, Trips
     - **JWT Authentication** with role-based access
     - **Simple phone + password authentication**
     
-    ### Quick Start
+    ### 🚀 Quick Start
     1. Create admin: `POST /api/v1/admins`
     2. Login: `POST /api/v1/auth/login` (works for all user types)
     3. Use Bearer token for authenticated endpoints
@@ -31,16 +31,15 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_tags=[
-        {"name": "Authentication", "description": "Login operations"},
-        {"name": "Admins", "description": "Admin management"},
-        {"name": "Parents", "description": "Parent management"},
-        {"name": "Drivers", "description": "Driver management"},
-        {"name": "Routes", "description": "Route management"},
-        {"name": "Buses", "description": "Bus management"},
-        {"name": "Route Stops", "description": "Bus stop management"},
-        {"name": "Students", "description": "Student management"},
-        {"name": "Trips", "description": "Trip management"},
-        {"name": "Encryption", "description": "Data encryption services"}
+        {"name": "Authentication", "description": "🔐 Login operations"},
+        {"name": "Admins", "description": "👨‍💼 Admin management"},
+        {"name": "Parents", "description": "👨‍👩‍👧‍👦 Parent management"},
+        {"name": "Drivers", "description": "🚗 Driver management"},
+        {"name": "Routes", "description": "🛣️ Route management"},
+        {"name": "Buses", "description": "🚌 Bus management"},
+        {"name": "Route Stops", "description": "🚏 Bus stop management"},
+        {"name": "Students", "description": "🎓 Student management"},
+        {"name": "Trips", "description": "🚌 Trip management"}
     ],
     contact={
         "name": "School Transport API",

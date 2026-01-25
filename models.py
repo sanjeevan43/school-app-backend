@@ -129,7 +129,6 @@ class DriverBase(BaseModel):
     licence_url: Optional[str] = Field(None, max_length=255)
     aadhar_url: Optional[str] = Field(None, max_length=255)
     photo_url: Optional[str] = Field(None, max_length=255)
-    device_id: Optional[str] = Field(None, max_length=255)
 
 class DriverCreate(DriverBase):
     password: str = Field(..., min_length=6)  # Password required for login
@@ -146,7 +145,6 @@ class DriverUpdate(BaseModel):
     licence_url: Optional[str] = Field(None, max_length=255)
     aadhar_url: Optional[str] = Field(None, max_length=255)
     photo_url: Optional[str] = Field(None, max_length=255)
-    device_id: Optional[str] = Field(None, max_length=255)
     is_available: Optional[bool] = None
     status: Optional[UserStatus] = None
 
@@ -155,7 +153,6 @@ class DriverResponse(DriverBase):
     kyc_verified: bool
     is_available: bool
     status: UserStatus
-    last_active_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -339,5 +336,11 @@ class TokenData(BaseModel):
 
 # Universal login model (phone + password)
 class LoginRequest(BaseModel):
-    phone: int = Field(..., ge=1000000000, le=9999999999)
-    password: str
+    phone: int = Field(..., description="10-digit phone number")
+    password: str = Field(..., min_length=1, description="User password")
+    
+    @validator('phone')
+    def validate_phone(cls, v):
+        if not (1000000000 <= v <= 9999999999):
+            raise ValueError('Phone number must be exactly 10 digits')
+        return v

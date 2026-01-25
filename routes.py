@@ -5,6 +5,8 @@ import uuid
 from database import get_db
 from models import *
 from auth import get_password_hash, verify_password, create_access_token
+from encryption import encrypt_data, decrypt_data
+from otp_service import OTPService
 
 router = APIRouter()
 
@@ -43,6 +45,36 @@ def update_entity(cursor, table: str, id_col: str, entity_id: str, update_data: 
     return cursor.fetchone()
 
 # =====================================================
+# ENCRYPTION/DECRYPTION ROUTES
+# =====================================================
+
+@router.post("/encrypt", tags=["Encryption"])
+async def encrypt_text(data: dict):
+    """Encrypt text data"""
+    try:
+        text = data.get("text", "")
+        if not text:
+            raise HTTPException(status_code=400, detail="Text is required")
+        
+        encrypted = encrypt_data(text)
+        return {"encrypted_text": encrypted}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Encryption failed: {str(e)}")
+
+@router.post("/decrypt", tags=["Encryption"])
+async def decrypt_text(data: dict):
+    """Decrypt text data"""
+    try:
+        encrypted_text = data.get("encrypted_text", "")
+        if not encrypted_text:
+            raise HTTPException(status_code=400, detail="Encrypted text is required")
+        
+        decrypted = decrypt_data(encrypted_text)
+        return {"decrypted_text": decrypted}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Decryption failed: {str(e)}")
+
+# =====================================================
 # AUTHENTICATION ROUTES
 # =====================================================
 
@@ -51,6 +83,8 @@ async def login(login_data: LoginRequest):
     """Universal login for all user types (admin, parent, driver)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
+            user = None
+            
             # Try admin first
             cursor.execute("SELECT admin_id as user_id, password_hash, status, 'admin' as user_type FROM admins WHERE phone = %s", (login_data.phone,))
             user = cursor.fetchone()
@@ -60,30 +94,26 @@ async def login(login_data: LoginRequest):
                 cursor.execute("SELECT parent_id as user_id, password_hash, status, 'parent' as user_type FROM parents WHERE phone = %s", (login_data.phone,))
                 user = cursor.fetchone()
             
-            # Try driver if parent not found (drivers don't have password_hash column)
+            # Try driver if parent not found
             if not user:
-                cursor.execute("SELECT driver_id as user_id, status, 'driver' as user_type FROM drivers WHERE phone = %s", (login_data.phone,))
-                driver = cursor.fetchone()
-                if driver:
-                    # For drivers, just check if they exist and are active
-                    if driver['status'] != 'ACTIVE':
-                        raise HTTPException(status_code=403, detail="Account inactive")
-                    access_token = create_access_token(data={"sub": driver['user_id'], "user_type": driver['user_type'], "phone": login_data.phone})
-                    return {"access_token": access_token, "token_type": "bearer"}
+                cursor.execute("SELECT driver_id as user_id, password_hash, status, 'driver' as user_type FROM drivers WHERE phone = %s", (login_data.phone,))
+                user = cursor.fetchone()
             
             if not user:
                 raise HTTPException(status_code=401, detail="Invalid phone number or password")
             
-            # For admin and parent, verify password
+            # Verify password
             if not verify_password(login_data.password, user['password_hash']):
                 raise HTTPException(status_code=401, detail="Invalid phone number or password")
             
             if user['status'] != 'ACTIVE':
                 raise HTTPException(status_code=403, detail="Account inactive")
             
-            # Update last login for admin
+            # Update last login
             if user['user_type'] == 'admin':
                 cursor.execute("UPDATE admins SET last_login_at = %s WHERE admin_id = %s", (datetime.utcnow(), user['user_id']))
+            elif user['user_type'] == 'parent':
+                cursor.execute("UPDATE parents SET last_login_at = %s WHERE parent_id = %s", (datetime.utcnow(), user['user_id']))
             
             access_token = create_access_token(data={"sub": user['user_id'], "user_type": user['user_type'], "phone": login_data.phone})
             return {"access_token": access_token, "token_type": "bearer"}
@@ -317,7 +347,7 @@ async def delete_parent(parent_id: str):
 
 @router.post("/drivers", response_model=DriverResponse, status_code=status.HTTP_201_CREATED, tags=["Drivers"])
 async def create_driver(driver: DriverCreate):
-    """Create a new driver (admin only) - Password required for login"""
+    """Create a new driver (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT driver_id FROM drivers WHERE phone = %s", (driver.phone,))
@@ -331,12 +361,12 @@ async def create_driver(driver: DriverCreate):
             password_hash = get_password_hash(driver.password)
             
             cursor.execute(
-                """INSERT INTO drivers (driver_id, name, phone, email, dob, licence_number, 
-                   licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, device_id)
+                """INSERT INTO drivers (driver_id, name, phone, email, password_hash, dob, licence_number, 
+                   licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (driver_id, driver.name, driver.phone, driver.email, driver.dob,
+                (driver_id, driver.name, driver.phone, driver.email, password_hash, driver.dob,
                  driver.licence_number, driver.licence_expiry, driver.aadhar_number,
-                 driver.licence_url, driver.aadhar_url, driver.photo_url, driver.device_id)
+                 driver.licence_url, driver.aadhar_url, driver.photo_url)
             )
             
             cursor.execute("SELECT * FROM drivers WHERE driver_id = %s", (driver_id,))
