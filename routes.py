@@ -261,6 +261,15 @@ async def create_parent(parent: ParentCreate):
                         detail="Email already registered"
                     )
             
+            # Validate student_id if provided
+            if parent.student_id:
+                cursor.execute("SELECT student_id FROM students WHERE student_id = %s", (parent.student_id,))
+                if not cursor.fetchone():
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Student with ID {parent.student_id} not found"
+                    )
+            
             parent_id = str(uuid.uuid4())
             password_hash = get_password_hash(parent.password)
             
@@ -951,7 +960,10 @@ async def assign_student_to_parent(parent_id: str, student_data: dict):
             # Verify student exists
             cursor.execute("SELECT student_id FROM students WHERE student_id = %s", (student_id,))
             if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Student not found")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Student with ID {student_id} not found"
+                )
             
             # Update parent with student_id
             cursor.execute(
