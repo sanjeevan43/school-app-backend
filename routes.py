@@ -6,7 +6,6 @@ from database import get_db
 from models import *
 from auth import get_password_hash, verify_password, create_access_token
 from encryption import encrypt_data, decrypt_data
-from otp_service import OTPService
 
 router = APIRouter()
 
@@ -267,11 +266,11 @@ async def create_parent(parent: ParentCreate):
             
             cursor.execute(
                 """INSERT INTO parents (parent_id, phone, email, password_hash, name, dob, 
-                   parent_role, door_no, street, city, district, state, country, pincode, emergency_contact)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                   parent_role, door_no, street, city, district, state, country, pincode, emergency_contact, fcm_token)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (parent_id, parent.phone, parent.email, password_hash, parent.name, parent.dob,
                  parent.parent_role, parent.door_no, parent.street, parent.city, parent.district,
-                 parent.state, parent.country, parent.pincode, parent.emergency_contact)
+                 parent.state, parent.country, parent.pincode, parent.emergency_contact, parent.fcm_token)
             )
             
             cursor.execute("SELECT * FROM parents WHERE parent_id = %s", (parent_id,))
@@ -362,11 +361,11 @@ async def create_driver(driver: DriverCreate):
             
             cursor.execute(
                 """INSERT INTO drivers (driver_id, name, phone, email, password_hash, dob, licence_number, 
-                   licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                   licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (driver_id, driver.name, driver.phone, driver.email, password_hash, driver.dob,
                  driver.licence_number, driver.licence_expiry, driver.aadhar_number,
-                 driver.licence_url, driver.aadhar_url, driver.photo_url)
+                 driver.licence_url, driver.aadhar_url, driver.photo_url, driver.fcm_token)
             )
             
             cursor.execute("SELECT * FROM drivers WHERE driver_id = %s", (driver_id,))
@@ -909,3 +908,49 @@ async def delete_trip(trip_id: str):
             cursor.execute("DELETE FROM trips WHERE trip_id = %s", (trip_id,))
             if cursor.rowcount == 0:
                 raise HTTPException(status_code=404, detail="Trip not found")
+
+# =====================================================
+# FCM TOKEN ROUTES
+# =====================================================
+
+@router.put("/parents/{parent_id}/fcm-token", tags=["Parents"])
+async def update_parent_fcm_token(parent_id: str, fcm_data: dict):
+    """Update parent FCM token"""
+    fcm_token = fcm_data.get("fcm_token")
+    if not fcm_token:
+        raise HTTPException(status_code=400, detail="FCM token is required")
+    
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Parent not found")
+            
+            cursor.execute(
+                "UPDATE parents SET fcm_token = %s WHERE parent_id = %s",
+                (fcm_token, parent_id)
+            )
+            
+            cursor.execute("SELECT * FROM parents WHERE parent_id = %s", (parent_id,))
+            return cursor.fetchone()
+
+@router.put("/drivers/{driver_id}/fcm-token", tags=["Drivers"])
+async def update_driver_fcm_token(driver_id: str, fcm_data: dict):
+    """Update driver FCM token"""
+    fcm_token = fcm_data.get("fcm_token")
+    if not fcm_token:
+        raise HTTPException(status_code=400, detail="FCM token is required")
+    
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT driver_id FROM drivers WHERE driver_id = %s", (driver_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Driver not found")
+            
+            cursor.execute(
+                "UPDATE drivers SET fcm_token = %s WHERE driver_id = %s",
+                (fcm_token, driver_id)
+            )
+            
+            cursor.execute("SELECT * FROM drivers WHERE driver_id = %s", (driver_id,))
+            return cursor.fetchone()

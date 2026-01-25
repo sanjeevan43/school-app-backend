@@ -46,7 +46,7 @@ class AdminBase(BaseModel):
     dob: Optional[date] = None
 
 class AdminCreate(AdminBase):
-    password: str = Field(..., min_length=6)  # Only for initial admin setup
+    password: str = Field(..., min_length=6, max_length=72)  # Only for initial admin setup
 
 class AdminUpdate(BaseModel):
     phone: Optional[int] = Field(None, ge=1000000000, le=9999999999)
@@ -80,6 +80,7 @@ class ParentBase(BaseModel):
     country: Optional[str] = Field(None, max_length=50)
     pincode: Optional[str] = Field(None, max_length=10)
     emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
+    fcm_token: Optional[str] = Field(None, max_length=255)
 
     @validator('emergency_contact')
     def emergency_contact_different(cls, v, values):
@@ -88,7 +89,7 @@ class ParentBase(BaseModel):
         return v
 
 class ParentCreate(ParentBase):
-    password: str = Field(..., min_length=6)  # Password required for login
+    password: str = Field(..., min_length=6, max_length=72)  # Password required for login
 
 class ParentUpdate(BaseModel):
     phone: Optional[int] = Field(None, ge=1000000000, le=9999999999)
@@ -104,6 +105,7 @@ class ParentUpdate(BaseModel):
     country: Optional[str] = Field(None, max_length=50)
     pincode: Optional[str] = Field(None, max_length=10)
     emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
+    fcm_token: Optional[str] = Field(None, max_length=255)
     status: Optional[UserStatus] = None
 
 class ParentResponse(ParentBase):
@@ -129,9 +131,10 @@ class DriverBase(BaseModel):
     licence_url: Optional[str] = Field(None, max_length=255)
     aadhar_url: Optional[str] = Field(None, max_length=255)
     photo_url: Optional[str] = Field(None, max_length=255)
+    fcm_token: Optional[str] = Field(None, max_length=255)
 
 class DriverCreate(DriverBase):
-    password: str = Field(..., min_length=6)  # Password required for login
+    password: str = Field(..., min_length=6, max_length=72)  # Password required for login
 
 class DriverUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
@@ -145,6 +148,7 @@ class DriverUpdate(BaseModel):
     licence_url: Optional[str] = Field(None, max_length=255)
     aadhar_url: Optional[str] = Field(None, max_length=255)
     photo_url: Optional[str] = Field(None, max_length=255)
+    fcm_token: Optional[str] = Field(None, max_length=255)
     is_available: Optional[bool] = None
     status: Optional[UserStatus] = None
 

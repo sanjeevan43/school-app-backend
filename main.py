@@ -20,7 +20,7 @@ app = FastAPI(
     - **Complete CRUD operations** for all entities
     - **8 Entities**: Admins, Parents, Drivers, Routes, Buses, Route Stops, Students, Trips
     - **JWT Authentication** with role-based access
-    - **Simple phone + password authentication**
+    - **Password-based authentication** for all user types
     
     ### Quick Start
     1. Create admin: `POST /api/v1/admins`
