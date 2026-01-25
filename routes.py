@@ -266,11 +266,11 @@ async def create_parent(parent: ParentCreate):
             
             cursor.execute(
                 """INSERT INTO parents (parent_id, phone, email, password_hash, name, dob, 
-                   parent_role, door_no, street, city, district, state, country, pincode, emergency_contact, fcm_token)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                   parent_role, door_no, street, city, district, state, country, pincode, emergency_contact, fcm_token, student_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (parent_id, parent.phone, parent.email, password_hash, parent.name, parent.dob,
                  parent.parent_role, parent.door_no, parent.street, parent.city, parent.district,
-                 parent.state, parent.country, parent.pincode, parent.emergency_contact, parent.fcm_token)
+                 parent.state, parent.country, parent.pincode, parent.emergency_contact, parent.fcm_token, parent.student_id)
             )
             
             cursor.execute("SELECT * FROM parents WHERE parent_id = %s", (parent_id,))
@@ -929,6 +929,34 @@ async def update_parent_fcm_token(parent_id: str, fcm_data: dict):
             cursor.execute(
                 "UPDATE parents SET fcm_token = %s WHERE parent_id = %s",
                 (fcm_token, parent_id)
+            )
+            
+            cursor.execute("SELECT * FROM parents WHERE parent_id = %s", (parent_id,))
+            return cursor.fetchone()
+
+@router.put("/parents/{parent_id}/assign-student", response_model=ParentResponse, tags=["Parents"])
+async def assign_student_to_parent(parent_id: str, student_data: dict):
+    """Assign a student to a parent"""
+    student_id = student_data.get("student_id")
+    if not student_id:
+        raise HTTPException(status_code=400, detail="Student ID is required")
+    
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            # Verify parent exists
+            cursor.execute("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Parent not found")
+            
+            # Verify student exists
+            cursor.execute("SELECT student_id FROM students WHERE student_id = %s", (student_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Student not found")
+            
+            # Update parent with student_id
+            cursor.execute(
+                "UPDATE parents SET student_id = %s WHERE parent_id = %s",
+                (student_id, parent_id)
             )
             
             cursor.execute("SELECT * FROM parents WHERE parent_id = %s", (parent_id,))

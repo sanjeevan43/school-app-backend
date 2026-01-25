@@ -81,6 +81,7 @@ class ParentBase(BaseModel):
     pincode: Optional[str] = Field(None, max_length=10)
     emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
     fcm_token: Optional[str] = Field(None, max_length=255)
+    student_id: Optional[str] = None
 
     @validator('emergency_contact')
     def emergency_contact_different(cls, v, values):
@@ -106,6 +107,7 @@ class ParentUpdate(BaseModel):
     pincode: Optional[str] = Field(None, max_length=10)
     emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
     fcm_token: Optional[str] = Field(None, max_length=255)
+    student_id: Optional[str] = None
     status: Optional[UserStatus] = None
 
 class ParentResponse(ParentBase):
