@@ -1,11 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 from config import get_settings
 from routes import router
 import uvicorn
+import logging
 
 settings = get_settings()
+logging.basicConfig(level=logging.INFO)
 
 # Enhanced FastAPI app with comprehensive Swagger UI
 app = FastAPI(
@@ -91,11 +94,18 @@ async def health_check():
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     """Global exception handler for unhandled errors"""
+    import traceback
+    
+    # Log the actual error for debugging
+    logging.error(f"Unhandled exception: {exc}")
+    logging.error(f"Traceback: {traceback.format_exc()}")
+    
     return JSONResponse(
         status_code=500,
         content={
             "detail": "Internal server error",
-            "error": str(exc) if settings.DEBUG else "An error occurred"
+            "error": str(exc) if settings.DEBUG else "An error occurred",
+            "path": str(request.url.path) if hasattr(request, 'url') else "unknown"
         }
     )
 

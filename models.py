@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, validator, ConfigDict
 from typing import Optional, Literal
 from datetime import date, datetime
 from enum import Enum
@@ -62,8 +62,7 @@ class AdminResponse(AdminBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Parent Models
 class ParentBase(BaseModel):
@@ -80,8 +79,6 @@ class ParentBase(BaseModel):
     country: Optional[str] = Field(None, max_length=50)
     pincode: Optional[str] = Field(None, max_length=10)
     emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
-    fcm_token: Optional[str] = Field(None, max_length=255)
-    student_id: Optional[str] = None
 
     @validator('emergency_contact')
     def emergency_contact_different(cls, v, values):
@@ -106,20 +103,17 @@ class ParentUpdate(BaseModel):
     country: Optional[str] = Field(None, max_length=50)
     pincode: Optional[str] = Field(None, max_length=10)
     emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
-    fcm_token: Optional[str] = Field(None, max_length=255)
-    student_id: Optional[str] = None
-    status: Optional[UserStatus] = None
+    parents_active_status: Optional[UserStatus] = None
 
 class ParentResponse(ParentBase):
     parent_id: str
-    status: UserStatus
+    parents_active_status: UserStatus = UserStatus.ACTIVE
     last_login_at: Optional[datetime] = None
-    failed_login_attempts: int
+    failed_login_attempts: int = 0
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Driver Models
 class DriverBase(BaseModel):
@@ -162,8 +156,7 @@ class DriverResponse(DriverBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Route Models
 class RouteBase(BaseModel):
@@ -174,16 +167,15 @@ class RouteCreate(RouteBase):
 
 class RouteUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
-    status: Optional[UserStatus] = None
+    routes_active_status: Optional[UserStatus] = None
 
 class RouteResponse(RouteBase):
     route_id: str
-    status: UserStatus
+    routes_active_status: UserStatus
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Bus Models
 class BusBase(BaseModel):
@@ -232,8 +224,7 @@ class BusResponse(BusBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Route Stop Models
 class RouteStopBase(BaseModel):
@@ -256,8 +247,7 @@ class RouteStopResponse(RouteStopBase):
     stop_id: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Student Models
 class StudentBase(BaseModel):
@@ -269,6 +259,8 @@ class StudentBase(BaseModel):
     route_id: str
     pickup_stop_id: str
     drop_stop_id: str
+    emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
+    student_photo_url: Optional[str] = Field(None, max_length=200)
 
     @validator('drop_stop_id')
     def stops_different(cls, v, values):
@@ -288,6 +280,8 @@ class StudentUpdate(BaseModel):
     route_id: Optional[str] = None
     pickup_stop_id: Optional[str] = None
     drop_stop_id: Optional[str] = None
+    emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
+    student_photo_url: Optional[str] = Field(None, max_length=200)
     student_status: Optional[StudentStatus] = None
     transport_status: Optional[TransportStatus] = None
 
@@ -298,8 +292,7 @@ class StudentResponse(StudentBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Trip Models
 class TripBase(BaseModel):
@@ -327,8 +320,7 @@ class TripResponse(TripBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Authentication Models
 class Token(BaseModel):

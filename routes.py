@@ -213,7 +213,7 @@ async def get_admin_profile():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-@router.get("/admins", response_model=List[AdminResponse], tags=["Admins"])
+@router.get("/admins", tags=["Admins"])
 async def get_all_admins():
     """Get all admins (admin only)"""
     try:
@@ -221,7 +221,7 @@ async def get_all_admins():
             with conn.cursor() as cursor:
                 cursor.execute("SELECT * FROM admins ORDER BY created_at DESC")
                 result = cursor.fetchall()
-                return result if result else []
+                return [dict(admin) for admin in result] if result else []
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
@@ -311,11 +311,11 @@ async def create_parent(parent: ParentCreate):
             
             cursor.execute(
                 """INSERT INTO parents (parent_id, phone, email, password_hash, name, dob, 
-                   parent_role, door_no, street, city, district, state, country, pincode, emergency_contact, fcm_token, student_id)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                   parent_role, door_no, street, city, district, state, country, pincode, emergency_contact)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (parent_id, parent.phone, parent.email, password_hash, parent.name, parent.dob,
                  parent.parent_role, parent.door_no, parent.street, parent.city, parent.district,
-                 parent.state, parent.country, parent.pincode, parent.emergency_contact, parent.fcm_token, parent.student_id)
+                 parent.state, parent.country, parent.pincode, parent.emergency_contact)
             )
             
             cursor.execute("SELECT * FROM parents WHERE parent_id = %s", (parent_id,))
@@ -337,7 +337,7 @@ async def get_parent_profile():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-@router.get("/parents", response_model=List[ParentResponse], tags=["Parents"])
+@router.get("/parents", tags=["Parents"])
 async def get_all_parents():
     """Get all parents (admin only)"""
     try:
@@ -345,7 +345,22 @@ async def get_all_parents():
             with conn.cursor() as cursor:
                 cursor.execute("SELECT * FROM parents ORDER BY created_at DESC")
                 result = cursor.fetchall()
-                return result if result else []
+                
+                # Convert to plain dict to avoid Pydantic issues
+                parents = []
+                for parent in result:
+                    parent_dict = dict(parent)
+                    # Handle both old and new column names
+                    if 'failed_login_attempts' not in parent_dict or parent_dict['failed_login_attempts'] is None:
+                        parent_dict['failed_login_attempts'] = 0
+                    # Handle status column name change
+                    if 'status' in parent_dict:
+                        parent_dict['parents_active_status'] = parent_dict['status']
+                    elif 'parents_active_status' not in parent_dict or parent_dict['parents_active_status'] is None:
+                        parent_dict['parents_active_status'] = 'ACTIVE'
+                    parents.append(parent_dict)
+                
+                return parents
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
@@ -425,7 +440,7 @@ async def create_driver(driver: DriverCreate):
             cursor.execute("SELECT * FROM drivers WHERE driver_id = %s", (driver_id,))
             return cursor.fetchone()
 
-@router.get("/drivers", response_model=List[DriverResponse], tags=["Drivers"])
+@router.get("/drivers", tags=["Drivers"])
 async def get_all_drivers(driver_id: Optional[str] = None):
     """Get all drivers or specific driver by ID using query parameter (admin only)"""
     try:
@@ -436,11 +451,11 @@ async def get_all_drivers(driver_id: Optional[str] = None):
                     driver = cursor.fetchone()
                     if not driver:
                         raise HTTPException(status_code=404, detail="Driver not found")
-                    return [driver]
+                    return [dict(driver)]
                 else:
                     cursor.execute("SELECT * FROM drivers ORDER BY created_at DESC")
                     result = cursor.fetchall()
-                    return result if result else []
+                    return [dict(driver) for driver in result] if result else []
     except HTTPException:
         raise
     except Exception as e:
@@ -524,7 +539,7 @@ async def create_route(route: RouteCreate):
             cursor.execute("SELECT * FROM routes WHERE route_id = %s", (route_id,))
             return cursor.fetchone()
 
-@router.get("/routes", response_model=List[RouteResponse], tags=["Routes"])
+@router.get("/routes", tags=["Routes"])
 async def get_all_routes():
     """Get all routes (admin only)"""
     try:
@@ -532,7 +547,7 @@ async def get_all_routes():
             with conn.cursor() as cursor:
                 cursor.execute("SELECT * FROM routes ORDER BY name")
                 result = cursor.fetchall()
-                return result if result else []
+                return [dict(route) for route in result] if result else []
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
@@ -615,7 +630,7 @@ async def create_bus(bus: BusCreate):
             cursor.execute("SELECT * FROM buses WHERE bus_id = %s", (bus_id,))
             return cursor.fetchone()
 
-@router.get("/buses", response_model=List[BusResponse], tags=["Buses"])
+@router.get("/buses", tags=["Buses"])
 async def get_all_buses():
     """Get all buses (admin only)"""
     try:
@@ -623,7 +638,7 @@ async def get_all_buses():
             with conn.cursor() as cursor:
                 cursor.execute("SELECT * FROM buses ORDER BY bus_number")
                 result = cursor.fetchall()
-                return result if result else []
+                return [dict(bus) for bus in result] if result else []
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
@@ -697,7 +712,7 @@ async def create_route_stop(stop: RouteStopCreate):
             cursor.execute("SELECT * FROM route_stops WHERE stop_id = %s", (stop_id,))
             return cursor.fetchone()
 
-@router.get("/route-stops", response_model=List[RouteStopResponse], tags=["Route Stops"])
+@router.get("/route-stops", tags=["Route Stops"])
 async def get_all_route_stops(route_id: Optional[str] = None):
     """Get all route stops, optionally filtered by route (admin only)"""
     try:
@@ -711,7 +726,7 @@ async def get_all_route_stops(route_id: Optional[str] = None):
                 else:
                     cursor.execute("SELECT * FROM route_stops ORDER BY route_id, stop_order")
                 result = cursor.fetchall()
-                return result if result else []
+                return [dict(stop) for stop in result] if result else []
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
@@ -804,16 +819,17 @@ async def create_student(student: StudentCreate):
             
             cursor.execute(
                 """INSERT INTO students (student_id, parent_id, s_parent_id, name, dob, 
-                   class_section, route_id, pickup_stop_id, drop_stop_id)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                   class_section, route_id, pickup_stop_id, drop_stop_id, emergency_contact, student_photo_url)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (student_id, student.parent_id, student.s_parent_id, student.name, student.dob,
-                 student.class_section, student.route_id, student.pickup_stop_id, student.drop_stop_id)
+                 student.class_section, student.route_id, student.pickup_stop_id, student.drop_stop_id,
+                 student.emergency_contact, student.student_photo_url)
             )
             
             cursor.execute("SELECT * FROM students WHERE student_id = %s", (student_id,))
             return cursor.fetchone()
 
-@router.get("/students", response_model=List[StudentResponse], tags=["Students"])
+@router.get("/students", tags=["Students"])
 async def get_all_students():
     """Get all students (admin only)"""
     try:
@@ -821,7 +837,7 @@ async def get_all_students():
             with conn.cursor() as cursor:
                 cursor.execute("SELECT * FROM students ORDER BY name")
                 result = cursor.fetchall()
-                return result if result else []
+                return [dict(student) for student in result] if result else []
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
@@ -920,7 +936,7 @@ async def create_trip(trip: TripCreate):
             cursor.execute("SELECT * FROM trips WHERE trip_id = %s", (trip_id,))
             return cursor.fetchone()
 
-@router.get("/trips", response_model=List[TripResponse], tags=["Trips"])
+@router.get("/trips", tags=["Trips"])
 async def get_all_trips(
     route_id: Optional[str] = None,
     trip_date: Optional[date] = None
@@ -944,7 +960,7 @@ async def get_all_trips(
                 
                 cursor.execute(query, tuple(params))
                 result = cursor.fetchall()
-                return result if result else []
+                return [dict(trip) for trip in result] if result else []
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
