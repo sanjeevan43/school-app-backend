@@ -1,0 +1,303 @@
+[
+  {
+    "category": "Health",
+    "test": "Database Connection",
+    "success": true,
+    "message": "Status: healthy, DB: connected",
+    "data": null
+  },
+  {
+    "category": "Encryption",
+    "test": "Encrypt Text",
+    "success": true,
+    "message": "Encrypted: Z0FBQUFBQnBkdGd6M1AtNXhBdUxuRl...",
+    "data": null
+  },
+  {
+    "category": "Encryption",
+    "test": "Decrypt Text",
+    "success": true,
+    "message": "Decrypted: Hello World Test 123",
+    "data": null
+  },
+  {
+    "category": "Admin",
+    "test": "POST /admins (Create)",
+    "success": true,
+    "message": "Admin already exists",
+    "data": null
+  },
+  {
+    "category": "Admin",
+    "test": "POST /auth/login",
+    "success": true,
+    "message": "Token received",
+    "data": null
+  },
+  {
+    "category": "Admin",
+    "test": "GET /admins/profile",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Admin",
+    "test": "GET /admins",
+    "success": true,
+    "message": "Found 13 admin(s)",
+    "data": null
+  },
+  {
+    "category": "Admin",
+    "test": "GET /admins/{id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Admin",
+    "test": "PUT /admins/{id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Parent",
+    "test": "POST /parents (Create)",
+    "success": true,
+    "message": "Parent already exists",
+    "data": null
+  },
+  {
+    "category": "Parent",
+    "test": "POST /auth/login (Parent)",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Parent",
+    "test": "GET /parents",
+    "success": true,
+    "message": "Found 17 parent(s)",
+    "data": null
+  },
+  {
+    "category": "Parent",
+    "test": "GET /parents/{id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Parent",
+    "test": "PUT /parents/{id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Driver",
+    "test": "POST /drivers (Create)",
+    "success": true,
+    "message": "Driver already exists",
+    "data": null
+  },
+  {
+    "category": "Driver",
+    "test": "POST /auth/login (Driver)",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Driver",
+    "test": "GET /drivers",
+    "success": true,
+    "message": "Found 13 driver(s)",
+    "data": null
+  },
+  {
+    "category": "Driver",
+    "test": "GET /drivers/available",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Driver",
+    "test": "GET /drivers/{id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Driver",
+    "test": "PUT /drivers/{id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Route",
+    "test": "POST /routes (Create)",
+    "success": true,
+    "message": "ID: 3857455e-f121-496c-9e04-14883fcf7950",
+    "data": null
+  },
+  {
+    "category": "Route",
+    "test": "GET /routes",
+    "success": true,
+    "message": "Found 25 route(s)",
+    "data": null
+  },
+  {
+    "category": "Route",
+    "test": "GET /routes/{id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Route",
+    "test": "PUT /routes/{id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Bus",
+    "test": "POST /buses (Create)",
+    "success": true,
+    "message": "Bus already exists",
+    "data": null
+  },
+  {
+    "category": "Bus",
+    "test": "GET /buses",
+    "success": true,
+    "message": "Found 11 bus(es)",
+    "data": null
+  },
+  {
+    "category": "Bus",
+    "test": "GET /buses/{id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Bus",
+    "test": "PUT /buses/{id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "RouteStop",
+    "test": "POST /route-stops (Create)",
+    "success": true,
+    "message": "ID: d25d5eec-7121-4aa6-a43e-b1126f6c5c10",
+    "data": null
+  },
+  {
+    "category": "RouteStop",
+    "test": "GET /route-stops",
+    "success": true,
+    "message": "Found 19 stop(s)",
+    "data": null
+  },
+  {
+    "category": "RouteStop",
+    "test": "GET /route-stops?route_id={id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "RouteStop",
+    "test": "POST /route-stops (Drop Stop)",
+    "success": true,
+    "message": "ID: f2c99cba-43ed-4e2a-aecf-356e4f435050",
+    "data": null
+  },
+  {
+    "category": "RouteStop",
+    "test": "PUT /route-stops/{id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Student",
+    "test": "POST /students (Create)",
+    "success": true,
+    "message": "ID: c1eafbce-31e8-4e3a-967d-0a9c01760c5a",
+    "data": null
+  },
+  {
+    "category": "Student",
+    "test": "GET /students",
+    "success": true,
+    "message": "Found 4 student(s)",
+    "data": null
+  },
+  {
+    "category": "Student",
+    "test": "GET /students/parent/{id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Student",
+    "test": "GET /students/{id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Student",
+    "test": "PUT /students/{id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Trip",
+    "test": "POST /trips (Create)",
+    "success": true,
+    "message": "ID: cee1a32b-c9e1-4296-8531-2d707f444b39",
+    "data": null
+  },
+  {
+    "category": "Trip",
+    "test": "GET /trips",
+    "success": true,
+    "message": "Found 11 trip(s)",
+    "data": null
+  },
+  {
+    "category": "Trip",
+    "test": "GET /trips?route_id={id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Trip",
+    "test": "GET /trips/{id}",
+    "success": true,
+    "message": "",
+    "data": null
+  },
+  {
+    "category": "Trip",
+    "test": "PUT /trips/{id}",
+    "success": true,
+    "message": "",
+    "data": null
+  }
+]
