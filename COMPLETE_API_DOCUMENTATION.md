@@ -354,7 +354,7 @@ Authorization: Bearer <access_token>
   "country": "India",
   "pincode": "400001",
   "emergency_contact": 9876543210,
-  "status": "ACTIVE",
+  "parents_active_status": "ACTIVE",
   "last_login_at": null,
   "failed_login_attempts": 0,
   "created_at": "2024-01-15T10:30:00",
@@ -548,11 +548,10 @@ Authorization: Bearer <access_token>
   "licence_url": "https://example.com/licence.jpg",
   "aadhar_url": "https://example.com/aadhar.jpg",
   "photo_url": "https://example.com/photo.jpg",
-  "device_id": "device-12345",
+  "fcm_token": "device-12345",
   "kyc_verified": false,
   "is_available": true,
   "status": "ACTIVE",
-  "last_active_at": null,
   "created_at": "2024-01-15T10:30:00",
   "updated_at": "2024-01-15T10:30:00"
 }
@@ -701,7 +700,7 @@ Authorization: Bearer <access_token>
 {
   "route_id": "RTE-880e8400-e29b-41d4-a716-446655440000",
   "name": "Route A - Central Mumbai",
-  "status": "ACTIVE",
+  "routes_active_status": "ACTIVE",
   "created_at": "2024-01-15T10:30:00",
   "updated_at": "2024-01-15T10:30:00"
 }
@@ -1152,6 +1151,8 @@ Authorization: Bearer <access_token>
   "route_id": "RTE-880e8400-e29b-41d4-a716-446655440000",
   "pickup_stop_id": "STP-aa0e8400-e29b-41d4-a716-446655440000",
   "drop_stop_id": "STP-bb0e8400-e29b-41d4-a716-446655440000",
+  "emergency_contact": null,
+  "student_photo_url": null,
   "student_status": "CURRENT",
   "transport_status": "ACTIVE",
   "created_at": "2024-01-15T10:30:00",
@@ -1923,6 +1924,7 @@ Trips (combines):
 6. **CORS Configuration**: Controlled access
 7. **Failed Login Tracking**: Security monitoring
 8. **Password-based Login**: Secure authentication for all users
+9. **ID Fields First**: Consistent response structure
 
 ---
 

@@ -78,13 +78,6 @@ class ParentBase(BaseModel):
     state: Optional[str] = Field(None, max_length=50)
     country: Optional[str] = Field(None, max_length=50)
     pincode: Optional[str] = Field(None, max_length=10)
-    emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
-
-    @validator('emergency_contact')
-    def emergency_contact_different(cls, v, values):
-        if v and 'phone' in values and v == values['phone']:
-            raise ValueError('Emergency contact must be different from phone number')
-        return v
 
 class ParentCreate(ParentBase):
     password: str = Field(..., min_length=6, max_length=72)  # Password required for login
@@ -102,14 +95,12 @@ class ParentUpdate(BaseModel):
     state: Optional[str] = Field(None, max_length=50)
     country: Optional[str] = Field(None, max_length=50)
     pincode: Optional[str] = Field(None, max_length=10)
-    emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
     parents_active_status: Optional[UserStatus] = None
 
 class ParentResponse(ParentBase):
     parent_id: str
     parents_active_status: UserStatus = UserStatus.ACTIVE
     last_login_at: Optional[datetime] = None
-    failed_login_attempts: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -145,13 +136,11 @@ class DriverUpdate(BaseModel):
     aadhar_url: Optional[str] = Field(None, max_length=255)
     photo_url: Optional[str] = Field(None, max_length=255)
     fcm_token: Optional[str] = Field(None, max_length=255)
-    is_available: Optional[bool] = None
     status: Optional[UserStatus] = None
 
 class DriverResponse(DriverBase):
     driver_id: str
     kyc_verified: bool
-    is_available: bool
     status: UserStatus
     created_at: datetime
     updated_at: datetime
@@ -194,7 +183,6 @@ class BusBase(BaseModel):
     bus_back_url: Optional[str] = Field(None, max_length=255)
     bus_left_url: Optional[str] = Field(None, max_length=255)
     bus_right_url: Optional[str] = Field(None, max_length=255)
-    assigned_date: Optional[date] = None
 
 class BusCreate(BusBase):
     pass
@@ -215,7 +203,6 @@ class BusUpdate(BaseModel):
     bus_back_url: Optional[str] = Field(None, max_length=255)
     bus_left_url: Optional[str] = Field(None, max_length=255)
     bus_right_url: Optional[str] = Field(None, max_length=255)
-    assigned_date: Optional[date] = None
     status: Optional[UserStatus] = None
 
 class BusResponse(BusBase):
@@ -259,6 +246,8 @@ class StudentBase(BaseModel):
     route_id: str
     pickup_stop_id: str
     drop_stop_id: str
+    pickup_stop_order: int = Field(..., description="Order of pickup stop in route")
+    drop_stop_order: int = Field(..., description="Order of drop stop in route")
     emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
     student_photo_url: Optional[str] = Field(None, max_length=200)
 
@@ -266,6 +255,12 @@ class StudentBase(BaseModel):
     def stops_different(cls, v, values):
         if v and 'pickup_stop_id' in values and v == values['pickup_stop_id']:
             raise ValueError('Pickup and drop stops must be different')
+        return v
+    
+    @validator('drop_stop_order')
+    def stop_order_valid(cls, v, values):
+        if v and 'pickup_stop_order' in values and v <= values['pickup_stop_order']:
+            raise ValueError('Drop stop order must be greater than pickup stop order')
         return v
 
 class StudentCreate(StudentBase):
@@ -280,6 +275,8 @@ class StudentUpdate(BaseModel):
     route_id: Optional[str] = None
     pickup_stop_id: Optional[str] = None
     drop_stop_id: Optional[str] = None
+    pickup_stop_order: Optional[int] = None
+    drop_stop_order: Optional[int] = None
     emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
     student_photo_url: Optional[str] = Field(None, max_length=200)
     student_status: Optional[StudentStatus] = None
@@ -331,6 +328,26 @@ class TokenData(BaseModel):
     user_id: Optional[str] = None
     user_type: Optional[str] = None
     phone: Optional[int] = None
+
+# Error Handling Models
+class ErrorHandlingBase(BaseModel):
+    error_type: Optional[str] = Field(None, max_length=50)
+    error_code: Optional[int] = None
+    error_description: Optional[str] = Field(None, max_length=255)
+
+class ErrorHandlingCreate(ErrorHandlingBase):
+    pass
+
+class ErrorHandlingUpdate(BaseModel):
+    error_type: Optional[str] = Field(None, max_length=50)
+    error_code: Optional[int] = None
+    error_description: Optional[str] = Field(None, max_length=255)
+
+class ErrorHandlingResponse(ErrorHandlingBase):
+    error_id: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 # Universal login model (phone + password)
 class LoginRequest(BaseModel):

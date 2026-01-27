@@ -302,14 +302,14 @@ async def create_parent(parent: ParentCreate):
             
             cursor.execute(
                 """INSERT INTO parents (parent_id, phone, email, password_hash, name, dob, 
-                   parent_role, door_no, street, city, district, state, country, pincode, emergency_contact)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                   parent_role, door_no, street, city, district, state, country, pincode)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (parent_id, parent.phone, parent.email, password_hash, parent.name, parent.dob,
                  parent.parent_role, parent.door_no, parent.street, parent.city, parent.district,
-                 parent.state, parent.country, parent.pincode, parent.emergency_contact)
+                 parent.state, parent.country, parent.pincode)
             )
             
-            cursor.execute("SELECT parent_id, phone, email, password_hash, name, dob, parent_role, door_no, street, city, district, state, country, pincode, emergency_contact, parents_active_status, last_login_at, failed_login_attempts, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
+            cursor.execute("SELECT parent_id, phone, email, password_hash, name, dob, parent_role, door_no, street, city, district, state, country, pincode, parents_active_status, last_login_at, failed_login_attempts, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
             return cursor.fetchone()
 
 @router.get("/parents/profile", response_model=ParentResponse, tags=["Parents"])
@@ -318,7 +318,7 @@ async def get_parent_profile():
     try:
         with get_db() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT parent_id, phone, email, password_hash, name, dob, parent_role, door_no, street, city, district, state, country, pincode, emergency_contact, parents_active_status, last_login_at, failed_login_attempts, created_at, updated_at FROM parents ORDER BY created_at DESC LIMIT 1")
+                cursor.execute("SELECT parent_id, phone, email, password_hash, name, dob, parent_role, door_no, street, city, district, state, country, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents ORDER BY created_at DESC LIMIT 1")
                 parent = cursor.fetchone()
                 if not parent:
                     raise HTTPException(status_code=404, detail="No parent found. Please create a parent first.")
@@ -334,7 +334,7 @@ async def get_all_parents():
     try:
         with get_db() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT parent_id, phone, email, password_hash, name, dob, parent_role, door_no, street, city, district, state, country, pincode, emergency_contact, parents_active_status, last_login_at, failed_login_attempts, created_at, updated_at FROM parents ORDER BY created_at DESC")
+                cursor.execute("SELECT parent_id, phone, email, password_hash, name, dob, parent_role, door_no, street, city, district, state, country, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents ORDER BY created_at DESC")
                 result = cursor.fetchall()
                 
                 # Convert to plain dict to avoid Pydantic issues
@@ -360,7 +360,7 @@ async def get_parent(parent_id: str):
     """Get parent by ID (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT parent_id, phone, email, password_hash, name, dob, parent_role, door_no, street, city, district, state, country, pincode, emergency_contact, parents_active_status, last_login_at, failed_login_attempts, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
+            cursor.execute("SELECT parent_id, phone, email, password_hash, name, dob, parent_role, door_no, street, city, district, state, country, pincode, parents_active_status, last_login_at, failed_login_attempts, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
             parent = cursor.fetchone()
             if not parent:
                 raise HTTPException(status_code=404, detail="Parent not found")
@@ -388,7 +388,7 @@ async def update_parent(parent_id: str, parent_update: ParentUpdate):
                 query = f"UPDATE parents SET {', '.join(update_fields)} WHERE parent_id = %s"
                 cursor.execute(query, tuple(update_values))
             
-            cursor.execute("SELECT parent_id, phone, email, password_hash, name, dob, parent_role, door_no, street, city, district, state, country, pincode, emergency_contact, parents_active_status, last_login_at, failed_login_attempts, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
+            cursor.execute("SELECT parent_id, phone, email, password_hash, name, dob, parent_role, door_no, street, city, district, state, country, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
             return cursor.fetchone()
 
 @router.delete("/parents/{parent_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Parents"])
@@ -438,13 +438,13 @@ async def get_all_drivers(driver_id: Optional[str] = None):
         with get_db() as conn:
             with conn.cursor() as cursor:
                 if driver_id:
-                    cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, is_available, status, created_at, updated_at FROM drivers WHERE driver_id = %s", (driver_id,))
+                    cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, status, created_at, updated_at FROM drivers WHERE driver_id = %s", (driver_id,))
                     driver = cursor.fetchone()
                     if not driver:
                         raise HTTPException(status_code=404, detail="Driver not found")
                     return [dict(driver)]
                 else:
-                    cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, is_available, status, created_at, updated_at FROM drivers ORDER BY created_at DESC")
+                    cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, status, created_at, updated_at FROM drivers ORDER BY created_at DESC")
                     result = cursor.fetchall()
                     return [dict(driver) for driver in result] if result else []
     except HTTPException:
@@ -459,7 +459,7 @@ async def get_available_drivers():
         with get_db() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    "SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, is_available, status, created_at, updated_at FROM drivers WHERE is_available = 1 AND status = 'ACTIVE' ORDER BY name"
+                    "SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, status, created_at, updated_at FROM drivers WHERE status = 'ACTIVE' ORDER BY name"
                 )
                 result = cursor.fetchall()
                 return result if result else []
@@ -471,7 +471,7 @@ async def get_driver(driver_id: str):
     """Get driver by ID (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, is_available, status, created_at, updated_at FROM drivers WHERE driver_id = %s", (driver_id,))
+            cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, status, created_at, updated_at FROM drivers WHERE driver_id = %s", (driver_id,))
             driver = cursor.fetchone()
             if not driver:
                 raise HTTPException(status_code=404, detail="Driver not found")
@@ -499,7 +499,7 @@ async def update_driver(driver_id: str, driver_update: DriverUpdate):
                 query = f"UPDATE drivers SET {', '.join(update_fields)} WHERE driver_id = %s"
                 cursor.execute(query, tuple(update_values))
             
-            cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, is_available, status, created_at, updated_at FROM drivers WHERE driver_id = %s", (driver_id,))
+            cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, status, created_at, updated_at FROM drivers WHERE driver_id = %s", (driver_id,))
             return cursor.fetchone()
 
 @router.delete("/drivers/{driver_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Drivers"])
@@ -609,16 +609,15 @@ async def create_bus(bus: BusCreate):
                 """INSERT INTO buses (bus_id, bus_number, driver_id, route_id, bus_type, 
                    bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date,
                    rc_book_url, fc_certificate_url, bus_front_url, bus_back_url, 
-                   bus_left_url, bus_right_url, assigned_date)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                   bus_left_url, bus_right_url)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (bus_id, bus.bus_number, bus.driver_id, bus.route_id, bus.bus_type,
                  bus.bus_brand, bus.bus_model, bus.seating_capacity, bus.rc_expiry_date,
                  bus.fc_expiry_date, bus.rc_book_url, bus.fc_certificate_url,
-                 bus.bus_front_url, bus.bus_back_url, bus.bus_left_url, bus.bus_right_url,
-                 bus.assigned_date)
+                 bus.bus_front_url, bus.bus_back_url, bus.bus_left_url, bus.bus_right_url)
             )
             
-            cursor.execute("SELECT bus_id, bus_number, driver_id, route_id, bus_type, bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date, rc_book_url, fc_certificate_url, bus_front_url, bus_back_url, bus_left_url, bus_right_url, assigned_date, status, created_at, updated_at FROM buses WHERE bus_id = %s", (bus_id,))
+            cursor.execute("SELECT bus_id, bus_number, driver_id, route_id, bus_type, bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date, rc_book_url, fc_certificate_url, bus_front_url, bus_back_url, bus_left_url, bus_right_url, status, created_at, updated_at FROM buses WHERE bus_id = %s", (bus_id,))
             return cursor.fetchone()
 
 @router.get("/buses", tags=["Buses"])
@@ -627,7 +626,7 @@ async def get_all_buses():
     try:
         with get_db() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT bus_id, bus_number, driver_id, route_id, bus_type, bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date, rc_book_url, fc_certificate_url, bus_front_url, bus_back_url, bus_left_url, bus_right_url, assigned_date, status, created_at, updated_at FROM buses ORDER BY bus_number")
+                cursor.execute("SELECT bus_id, bus_number, driver_id, route_id, bus_type, bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date, rc_book_url, fc_certificate_url, bus_front_url, bus_back_url, bus_left_url, bus_right_url, status, created_at, updated_at FROM buses ORDER BY bus_number")
                 result = cursor.fetchall()
                 return [dict(bus) for bus in result] if result else []
     except Exception as e:
@@ -638,7 +637,7 @@ async def get_bus(bus_id: str):
     """Get bus by ID (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT bus_id, bus_number, driver_id, route_id, bus_type, bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date, rc_book_url, fc_certificate_url, bus_front_url, bus_back_url, bus_left_url, bus_right_url, assigned_date, status, created_at, updated_at FROM buses WHERE bus_id = %s", (bus_id,))
+            cursor.execute("SELECT bus_id, bus_number, driver_id, route_id, bus_type, bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date, rc_book_url, fc_certificate_url, bus_front_url, bus_back_url, bus_left_url, bus_right_url, status, created_at, updated_at FROM buses WHERE bus_id = %s", (bus_id,))
             bus = cursor.fetchone()
             if not bus:
                 raise HTTPException(status_code=404, detail="Bus not found")
@@ -666,7 +665,7 @@ async def update_bus(bus_id: str, bus_update: BusUpdate):
                 query = f"UPDATE buses SET {', '.join(update_fields)} WHERE bus_id = %s"
                 cursor.execute(query, tuple(update_values))
             
-            cursor.execute("SELECT bus_id, bus_number, driver_id, route_id, bus_type, bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date, rc_book_url, fc_certificate_url, bus_front_url, bus_back_url, bus_left_url, bus_right_url, assigned_date, status, created_at, updated_at FROM buses WHERE bus_id = %s", (bus_id,))
+            cursor.execute("SELECT bus_id, bus_number, driver_id, route_id, bus_type, bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date, rc_book_url, fc_certificate_url, bus_front_url, bus_back_url, bus_left_url, bus_right_url, status, created_at, updated_at FROM buses WHERE bus_id = %s", (bus_id,))
             return cursor.fetchone()
 
 @router.delete("/buses/{bus_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Buses"])
@@ -810,14 +809,14 @@ async def create_student(student: StudentCreate):
             
             cursor.execute(
                 """INSERT INTO students (student_id, parent_id, s_parent_id, name, dob, 
-                   class_section, route_id, pickup_stop_id, drop_stop_id, emergency_contact, student_photo_url)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                   class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (student_id, student.parent_id, student.s_parent_id, student.name, student.dob,
                  student.class_section, student.route_id, student.pickup_stop_id, student.drop_stop_id,
-                 student.emergency_contact, student.student_photo_url)
+                 student.pickup_stop_order, student.drop_stop_order, student.emergency_contact, student.student_photo_url)
             )
             
-            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, emergency_contact, student_photo_url, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
+            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
             return cursor.fetchone()
 
 @router.get("/students", tags=["Students"])
@@ -826,7 +825,7 @@ async def get_all_students():
     try:
         with get_db() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, emergency_contact, student_photo_url, student_status, transport_status, created_at, updated_at FROM students ORDER BY name")
+                cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, student_status, transport_status, created_at, updated_at FROM students ORDER BY name")
                 result = cursor.fetchall()
                 return [dict(student) for student in result] if result else []
     except Exception as e:
@@ -842,7 +841,7 @@ async def get_students_by_parent(parent_id: str):
     with get_db() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, emergency_contact, student_photo_url, student_status, transport_status, created_at, updated_at FROM students WHERE parent_id = %s OR s_parent_id = %s ORDER BY name",
+                "SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, student_status, transport_status, created_at, updated_at FROM students WHERE parent_id = %s OR s_parent_id = %s ORDER BY name",
                 (parent_id, parent_id)
             )
             return cursor.fetchall()
@@ -852,7 +851,7 @@ async def get_student(student_id: str):
     """Get student by ID (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, emergency_contact, student_photo_url, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
+            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
             student = cursor.fetchone()
             if not student:
                 raise HTTPException(status_code=404, detail="Student not found")
@@ -880,7 +879,7 @@ async def update_student(student_id: str, student_update: StudentUpdate):
                 query = f"UPDATE students SET {', '.join(update_fields)} WHERE student_id = %s"
                 cursor.execute(query, tuple(update_values))
             
-            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, emergency_contact, student_photo_url, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
+            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
             return cursor.fetchone()
 
 @router.delete("/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Students"])
@@ -1050,8 +1049,124 @@ async def assign_student_to_parent(parent_id: str, student_data: dict):
             # Note: Parent-student relationship is managed through students table
             # No need to update parents table as students already reference parent_id
             
-            cursor.execute("SELECT parent_id, phone, email, password_hash, name, dob, parent_role, door_no, street, city, district, state, country, pincode, emergency_contact, parents_active_status, last_login_at, failed_login_attempts, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
+            cursor.execute("SELECT parent_id, phone, email, password_hash, name, dob, parent_role, door_no, street, city, district, state, country, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
             return cursor.fetchone()
+
+# =====================================================
+# STORED PROCEDURE ROUTES
+# =====================================================
+
+@router.get("/routes/{route_id}/stops", tags=["Route Stops"])
+async def get_route_stops_ordered(route_id: str):
+    """Get route stops in order using stored procedure"""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.callproc('get_route_stops', [route_id])
+            result = cursor.fetchall()
+            return [dict(stop) for stop in result] if result else []
+
+@router.get("/trips/pickup-schedule", tags=["Trips"])
+async def get_all_pickup_schedule():
+    """Get all pickup schedule using stored procedure"""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.callproc('get_all_pickup')
+            result = cursor.fetchall()
+            return [dict(pickup) for pickup in result] if result else []
+
+@router.get("/trips/drop-schedule", tags=["Trips"])
+async def get_all_drop_schedule():
+    """Get all drop schedule using stored procedure"""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.callproc('get_all_drop')
+            result = cursor.fetchall()
+            return [dict(drop) for drop in result] if result else []
+
+@router.get("/trips/{trip_id}/next-stop", tags=["Trips"])
+async def get_next_stop(trip_id: str):
+    """Get next stop for a trip using stored procedure"""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.callproc('get_next_stop', [trip_id])
+            result = cursor.fetchone()
+            return dict(result) if result else None
+
+# =====================================================
+# ERROR HANDLING ROUTES
+# =====================================================
+
+@router.post("/error-handling", response_model=ErrorHandlingResponse, status_code=status.HTTP_201_CREATED, tags=["Error Handling"])
+async def create_error_log(error: ErrorHandlingCreate):
+    """Create a new error log (admin only)"""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            error_id = str(uuid.uuid4())
+            
+            cursor.execute(
+                "INSERT INTO error_handling (error_id, error_type, error_code, error_description) VALUES (%s, %s, %s, %s)",
+                (error_id, error.error_type, error.error_code, error.error_description)
+            )
+            
+            cursor.execute("SELECT error_id, error_type, error_code, error_description, created_at FROM error_handling WHERE error_id = %s", (error_id,))
+            return cursor.fetchone()
+
+@router.get("/error-handling", tags=["Error Handling"])
+async def get_all_error_logs():
+    """Get all error logs (admin only)"""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT error_id, error_type, error_code, error_description, created_at FROM error_handling ORDER BY created_at DESC")
+                result = cursor.fetchall()
+                return [dict(error) for error in result] if result else []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@router.get("/error-handling/{error_id}", response_model=ErrorHandlingResponse, tags=["Error Handling"])
+async def get_error_log(error_id: str):
+    """Get error log by ID (admin only)"""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT error_id, error_type, error_code, error_description, created_at FROM error_handling WHERE error_id = %s", (error_id,))
+            error = cursor.fetchone()
+            if not error:
+                raise HTTPException(status_code=404, detail="Error log not found")
+            return error
+
+@router.put("/error-handling/{error_id}", response_model=ErrorHandlingResponse, tags=["Error Handling"])
+async def update_error_log(error_id: str, error_update: ErrorHandlingUpdate):
+    """Update error log (admin only)"""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT error_id FROM error_handling WHERE error_id = %s", (error_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Error log not found")
+            
+            update_fields = []
+            update_values = []
+            
+            for field, value in error_update.dict(exclude_unset=True).items():
+                if value is not None:
+                    update_fields.append(f"{field} = %s")
+                    update_values.append(value)
+            
+            if update_fields:
+                update_values.append(error_id)
+                query = f"UPDATE error_handling SET {', '.join(update_fields)} WHERE error_id = %s"
+                cursor.execute(query, tuple(update_values))
+            
+            cursor.execute("SELECT error_id, error_type, error_code, error_description, created_at FROM error_handling WHERE error_id = %s", (error_id,))
+            return cursor.fetchone()
+
+@router.delete("/error-handling/{error_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Error Handling"])
+async def delete_error_log(error_id: str):
+    """Delete error log (admin only)"""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM error_handling WHERE error_id = %s", (error_id,))
+            if cursor.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Error log not found")
 
 @router.put("/drivers/{driver_id}/fcm-token", tags=["Drivers"])
 async def update_driver_fcm_token(driver_id: str, fcm_data: dict):
@@ -1071,5 +1186,5 @@ async def update_driver_fcm_token(driver_id: str, fcm_data: dict):
                 (fcm_token, driver_id)
             )
             
-            cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, is_available, status, created_at, updated_at FROM drivers WHERE driver_id = %s", (driver_id,))
+            cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, status, created_at, updated_at FROM drivers WHERE driver_id = %s", (driver_id,))
             return cursor.fetchone()
