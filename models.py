@@ -37,22 +37,21 @@ class TripStatus(str, Enum):
     ONGOING = "ONGOING"
     PAUSED = "PAUSED"
     COMPLETED = "COMPLETED"
+    CANCELED = "CANCELED"
 
 # Admin Models
 class AdminBase(BaseModel):
     phone: int = Field(..., ge=1000000000, le=9999999999)
     email: Optional[EmailStr] = None
     name: str = Field(..., max_length=100)
-    dob: Optional[date] = None
 
 class AdminCreate(AdminBase):
-    password: str = Field(..., min_length=6, max_length=72)  # Only for initial admin setup
+    password: str = Field(..., min_length=6, max_length=72)
 
 class AdminUpdate(BaseModel):
     phone: Optional[int] = Field(None, ge=1000000000, le=9999999999)
     email: Optional[EmailStr] = None
     name: Optional[str] = Field(None, max_length=100)
-    dob: Optional[date] = None
     status: Optional[UserStatus] = None
 
 class AdminResponse(AdminBase):
@@ -69,15 +68,13 @@ class ParentBase(BaseModel):
     phone: int = Field(..., ge=1000000000, le=9999999999)
     email: Optional[EmailStr] = None
     name: str = Field(..., max_length=100)
-    dob: Optional[date] = None
     parent_role: ParentRole = ParentRole.GUARDIAN
     door_no: Optional[str] = Field(None, max_length=50)
     street: Optional[str] = Field(None, max_length=100)
     city: Optional[str] = Field(None, max_length=50)
     district: Optional[str] = Field(None, max_length=50)
-    state: Optional[str] = Field(None, max_length=50)
-    country: Optional[str] = Field(None, max_length=50)
     pincode: Optional[str] = Field(None, max_length=10)
+    fcm_token: Optional[str] = Field(None, max_length=255)
 
 class ParentCreate(ParentBase):
     password: str = Field(..., min_length=6, max_length=72)  # Password required for login
@@ -86,15 +83,13 @@ class ParentUpdate(BaseModel):
     phone: Optional[int] = Field(None, ge=1000000000, le=9999999999)
     email: Optional[EmailStr] = None
     name: Optional[str] = Field(None, max_length=100)
-    dob: Optional[date] = None
     parent_role: Optional[ParentRole] = None
     door_no: Optional[str] = Field(None, max_length=50)
     street: Optional[str] = Field(None, max_length=100)
     city: Optional[str] = Field(None, max_length=50)
     district: Optional[str] = Field(None, max_length=50)
-    state: Optional[str] = Field(None, max_length=50)
-    country: Optional[str] = Field(None, max_length=50)
     pincode: Optional[str] = Field(None, max_length=10)
+    fcm_token: Optional[str] = Field(None, max_length=255)
     parents_active_status: Optional[UserStatus] = None
 
 class ParentResponse(ParentBase):
@@ -114,9 +109,6 @@ class DriverBase(BaseModel):
     dob: Optional[date] = None
     licence_number: Optional[str] = Field(None, max_length=50)
     licence_expiry: Optional[date] = None
-    aadhar_number: Optional[str] = Field(None, max_length=20)
-    licence_url: Optional[str] = Field(None, max_length=255)
-    aadhar_url: Optional[str] = Field(None, max_length=255)
     photo_url: Optional[str] = Field(None, max_length=255)
     fcm_token: Optional[str] = Field(None, max_length=255)
 
@@ -128,19 +120,14 @@ class DriverUpdate(BaseModel):
     phone: Optional[int] = Field(None, ge=1000000000, le=9999999999)
     email: Optional[EmailStr] = None
     dob: Optional[date] = None
-    kyc_verified: Optional[bool] = None
     licence_number: Optional[str] = Field(None, max_length=50)
     licence_expiry: Optional[date] = None
-    aadhar_number: Optional[str] = Field(None, max_length=20)
-    licence_url: Optional[str] = Field(None, max_length=255)
-    aadhar_url: Optional[str] = Field(None, max_length=255)
     photo_url: Optional[str] = Field(None, max_length=255)
     fcm_token: Optional[str] = Field(None, max_length=255)
     status: Optional[UserStatus] = None
 
 class DriverResponse(DriverBase):
     driver_id: str
-    kyc_verified: bool
     status: UserStatus
     created_at: datetime
     updated_at: datetime
@@ -168,10 +155,10 @@ class RouteResponse(RouteBase):
 
 # Bus Models
 class BusBase(BaseModel):
-    bus_number: str = Field(..., max_length=20)
+    registration_number: str = Field(..., max_length=20)
     driver_id: Optional[str] = None
     route_id: Optional[str] = None
-    bus_type: Optional[str] = Field(None, max_length=50)
+    vehicle_type: Optional[str] = Field(None, max_length=50)
     bus_brand: Optional[str] = Field(None, max_length=100)
     bus_model: Optional[str] = Field(None, max_length=100)
     seating_capacity: int = Field(..., gt=0)
@@ -179,19 +166,15 @@ class BusBase(BaseModel):
     fc_expiry_date: Optional[date] = None
     rc_book_url: Optional[str] = Field(None, max_length=255)
     fc_certificate_url: Optional[str] = Field(None, max_length=255)
-    bus_front_url: Optional[str] = Field(None, max_length=255)
-    bus_back_url: Optional[str] = Field(None, max_length=255)
-    bus_left_url: Optional[str] = Field(None, max_length=255)
-    bus_right_url: Optional[str] = Field(None, max_length=255)
 
 class BusCreate(BusBase):
     pass
 
 class BusUpdate(BaseModel):
-    bus_number: Optional[str] = Field(None, max_length=20)
+    registration_number: Optional[str] = Field(None, max_length=20)
     driver_id: Optional[str] = None
     route_id: Optional[str] = None
-    bus_type: Optional[str] = Field(None, max_length=50)
+    vehicle_type: Optional[str] = Field(None, max_length=50)
     bus_brand: Optional[str] = Field(None, max_length=100)
     bus_model: Optional[str] = Field(None, max_length=100)
     seating_capacity: Optional[int] = Field(None, gt=0)
@@ -199,14 +182,33 @@ class BusUpdate(BaseModel):
     fc_expiry_date: Optional[date] = None
     rc_book_url: Optional[str] = Field(None, max_length=255)
     fc_certificate_url: Optional[str] = Field(None, max_length=255)
-    bus_front_url: Optional[str] = Field(None, max_length=255)
-    bus_back_url: Optional[str] = Field(None, max_length=255)
-    bus_left_url: Optional[str] = Field(None, max_length=255)
-    bus_right_url: Optional[str] = Field(None, max_length=255)
     status: Optional[UserStatus] = None
 
 class BusResponse(BusBase):
     bus_id: str
+    status: UserStatus
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+# Class Models
+class ClassBase(BaseModel):
+    class_name: str = Field(..., max_length=20)
+    section: str = Field(..., max_length=10)
+    academic_year: str = Field(..., max_length=20)
+
+class ClassCreate(ClassBase):
+    pass
+
+class ClassUpdate(BaseModel):
+    class_name: Optional[str] = Field(None, max_length=20)
+    section: Optional[str] = Field(None, max_length=10)
+    academic_year: Optional[str] = Field(None, max_length=20)
+    status: Optional[UserStatus] = None
+
+class ClassResponse(ClassBase):
+    class_id: str
     status: UserStatus
     created_at: datetime
     updated_at: datetime
@@ -242,8 +244,9 @@ class StudentBase(BaseModel):
     s_parent_id: Optional[str] = None
     name: str = Field(..., max_length=100)
     dob: Optional[date] = None
-    class_section: Optional[str] = Field(None, max_length=50)
-    route_id: str
+    class_id: Optional[str] = None
+    pickup_route_id: str
+    drop_route_id: str
     pickup_stop_id: str
     drop_stop_id: str
     pickup_stop_order: int = Field(..., description="Order of pickup stop in route")
@@ -271,8 +274,9 @@ class StudentUpdate(BaseModel):
     s_parent_id: Optional[str] = None
     name: Optional[str] = Field(None, max_length=100)
     dob: Optional[date] = None
-    class_section: Optional[str] = Field(None, max_length=50)
-    route_id: Optional[str] = None
+    class_id: Optional[str] = None
+    pickup_route_id: Optional[str] = None
+    drop_route_id: Optional[str] = None
     pickup_stop_id: Optional[str] = None
     drop_stop_id: Optional[str] = None
     pickup_stop_order: Optional[int] = None

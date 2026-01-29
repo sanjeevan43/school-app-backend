@@ -1,5 +1,0 @@
-﻿
-[94m============================================================[0m
-
-[91mFatal error: 'charmap' codec can't encode character '\U0001f680' in position 5: character maps to <undefined>[0m
-

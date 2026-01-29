@@ -41,8 +41,10 @@ app = FastAPI(
         {"name": "Routes", "description": "Route management"},
         {"name": "Buses", "description": "Bus management"},
         {"name": "Route Stops", "description": "Bus stop management"},
+        {"name": "Classes", "description": "Class management"},
         {"name": "Students", "description": "Student management"},
         {"name": "Trips", "description": "Trip management"},
+        {"name": "Error Handling", "description": "Error log management"},
         {"name": "Encryption", "description": "Data encryption services"}
     ],
     contact={

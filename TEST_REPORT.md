@@ -1,202 +1,128 @@
-# 🚀 School Transport API - Complete Test Report
+# 🚌 School Transport Management API - Test Report
 
-**Test Date:** 2026-01-26  
-**Base URL:** http://localhost:8080/api/v1  
-**Total Endpoints Tested:** 44
+## 📊 Test Results Summary
 
----
+**Date**: January 2024  
+**Total Endpoints Tested**: 25  
+**Passed**: 14 (56.0%)  
+**Failed**: 11 (44.0%)  
 
-## 📊 Overall Summary
+## ✅ Working Endpoints (14)
 
-| Category | Total Tests | Passed | Failed | Success Rate |
-|----------|-------------|--------|--------|--------------|
-| **Health** | 1 | ✅ 1 | ❌ 0 | 100% |
-| **Encryption** | 2 | ✅ 2 | ❌ 0 | 100% |
-| **Admin** | 6 | ✅ 6 | ❌ 0 | 100% |
-| **Parent** | 5 | ✅ 5 | ❌ 0 | 100% |
-| **Driver** | 6 | ✅ 6 | ❌ 0 | 100% |
-| **Route** | 4 | ✅ 4 | ❌ 0 | 100% |
-| **Bus** | 4 | ✅ 4 | ❌ 0 | 100% |
-| **RouteStop** | 5 | ✅ 5 | ❌ 0 | 100% |
-| **Student** | 5 | ✅ 5 | ❌ 0 | 100% |
-| **Trip** | 5 | ✅ 4 | ❌ 1 | 80% |
+### Authentication & Admin (5/6)
+- ✅ `POST /auth/login` - Universal login working
+- ✅ `GET /auth/profile` - User profile retrieval
+- ✅ `GET /admins/profile` - Admin profile
+- ✅ `GET /admins` - Get all admins
+- ❌ `POST /admins` - Fails due to duplicate phone (expected)
 
-### 🎯 Overall Success Rate: **97.7%** (43/44 tests passed)
+### Parent APIs (2/3)
+- ✅ `GET /parents` - Get all parents (FIXED)
+- ✅ `PUT /parents/{id}/fcm-token` - FCM token update
+- ❌ `POST /parents` - Fails due to duplicate phone (expected)
 
----
+### Route & Route Stop APIs (4/4)
+- ✅ `POST /routes` - Create route
+- ✅ `GET /routes` - Get all routes
+- ✅ `POST /route-stops` - Create route stop
+- ✅ `GET /route-stops` - Get all route stops
 
-## ✅ Passed Tests (43)
+### Class APIs (1/2)
+- ✅ `GET /classes` - Get all classes
+- ❌ `POST /classes` - Database error
 
-### 🏥 Health Check (1/1)
-- ✅ Database Connection - Status: healthy, DB: connected
+### Trip & Error Handling APIs (2/4)
+- ✅ `GET /trips` - Get all trips
+- ✅ `POST /error-handling` - Create error log
+- ✅ `GET /error-handling` - Get all error logs
+- ❌ Stored procedure endpoints failing
 
-### 🔐 Encryption/Decryption (2/2)
-- ✅ Encrypt Text
-- ✅ Decrypt Text
+### Encryption APIs (1/1)
+- ✅ `POST /encrypt` - Text encryption
 
-### 👨‍💼 Admin Endpoints (6/6)
-- ✅ `POST /admins` - Create Admin
-- ✅ `POST /auth/login` - Admin Login (JWT Token)
-- ✅ `GET /admins/profile` - Get Current Admin Profile
-- ✅ `GET /admins` - Get All Admins (Found 13 admins)
-- ✅ `GET /admins/{id}` - Get Admin by ID
-- ✅ `PUT /admins/{id}` - Update Admin
+## ❌ Issues Found (11)
 
-### 👨‍👩‍👧‍👦 Parent Endpoints (5/5)
-- ✅ `POST /parents` - Create Parent
-- ✅ `POST /auth/login` - Parent Login
-- ✅ `GET /parents` - Get All Parents (Found 17 parents)
-- ✅ `GET /parents/{id}` - Get Parent by ID
-- ✅ `PUT /parents/{id}` - Update Parent
+### 1. Database Schema Mismatches
+**Driver Queries** - Column `kyc_verified` doesn't exist
+```sql
+-- Current query tries to select:
+SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, ...
 
-### 🚗 Driver Endpoints (6/6)
-- ✅ `POST /drivers` - Create Driver
-- ✅ `POST /auth/login` - Driver Login
-- ✅ `GET /drivers` - Get All Drivers (Found 13 drivers)
-- ✅ `GET /drivers/available` - Get Available Drivers
-- ✅ `GET /drivers/{id}` - Get Driver by ID
-- ✅ `PUT /drivers/{id}` - Update Driver
+-- Should be:
+SELECT driver_id, name, phone, email, password_hash, dob, licence_number, ...
+```
 
-### 🛣️ Route Endpoints (4/4)
-- ✅ `POST /routes` - Create Route
-- ✅ `GET /routes` - Get All Routes (Found 24 routes)
-- ✅ `GET /routes/{id}` - Get Route by ID
-- ✅ `PUT /routes/{id}` - Update Route
+**Bus Queries** - Column `bus_number` should be `registration_number`
+```sql
+-- Current query:
+SELECT bus_id, bus_number, driver_id, ...
 
-### 🚌 Bus Endpoints (4/4)
-- ✅ `POST /buses` - Create Bus
-- ✅ `GET /buses` - Get All Buses (Found 11 buses)
-- ✅ `GET /buses/{id}` - Get Bus by ID
-- ✅ `PUT /buses/{id}` - Update Bus
+-- Should be:
+SELECT bus_id, registration_number, driver_id, ...
+```
 
-### 🚏 Route Stop Endpoints (5/5)
-- ✅ `POST /route-stops` - Create Route Stop
-- ✅ `POST /route-stops` - Create Drop Stop
-- ✅ `GET /route-stops` - Get All Route Stops (Found 17 stops)
-- ✅ `GET /route-stops?route_id={id}` - Get Stops by Route
-- ✅ `PUT /route-stops/{id}` - Update Route Stop
+**Student Queries** - Column `class_section` should be `class_id`
+```sql
+-- Current query:
+SELECT student_id, parent_id, s_parent_id, name, dob, class_section, ...
 
-### 👨‍🎓 Student Endpoints (5/5)
-- ✅ `POST /students` - Create Student
-- ✅ `GET /students` - Get All Students (Found 3 students)
-- ✅ `GET /students/parent/{id}` - Get Students by Parent
-- ✅ `GET /students/{id}` - Get Student by ID
-- ✅ `PUT /students/{id}` - Update Student
+-- Should be:
+SELECT student_id, parent_id, s_parent_id, name, dob, class_id, ...
+```
 
-### 🚌 Trip Endpoints (4/5)
-- ✅ `GET /trips` - Get All Trips (Found 10 trips)
-- ✅ `GET /trips?route_id={id}` - Get Trips by Route
-- ✅ `GET /trips/{id}` - Get Trip by ID
-- ✅ `PUT /trips/{id}` - Update Trip
+### 2. Missing Stored Procedures
+- `get_all_pickup` procedure not found
+- `get_all_drop` procedure not found
 
----
+### 3. Duplicate Data Issues
+- Admin and Parent creation failing due to existing phone numbers (test data cleanup needed)
 
-## ❌ Failed Tests (1)
-
-### 🚌 Trip Endpoints
-- ❌ `POST /trips` - Create Trip
-  - **Status Code:** 422 (Unprocessable Entity)
-  - **Issue:** Validation error - likely due to trip_type value
-  - **Expected:** "PICKUP" or "DROP"
-  - **Sent:** "PICKUP" (needs verification in models.py)
-
----
-
-## 🔍 Detailed Analysis
-
-### Database Statistics
-- **Admins:** 13 records
-- **Parents:** 17 records
-- **Drivers:** 13 records
-- **Routes:** 24 records
-- **Buses:** 11 records
-- **Route Stops:** 17 records
-- **Students:** 3 records
-- **Trips:** 10 records
-
-### Authentication System
-✅ **Working perfectly:**
-- Admin password-based login
-- Parent password-based login
-- Driver password-based login
-- JWT token generation
-- Token-based authorization
-
-### CRUD Operations Coverage
-| Entity | Create | Read | Update | Delete | Status |
-|--------|--------|------|--------|--------|--------|
-| Admins | ✅ | ✅ | ✅ | ⚠️ | Not tested |
-| Parents | ✅ | ✅ | ✅ | ⚠️ | Not tested |
-| Drivers | ✅ | ✅ | ✅ | ⚠️ | Not tested |
-| Routes | ✅ | ✅ | ✅ | ⚠️ | Not tested |
-| Buses | ✅ | ✅ | ✅ | ⚠️ | Not tested |
-| Route Stops | ✅ | ✅ | ✅ | ⚠️ | Not tested |
-| Students | ✅ | ✅ | ✅ | ⚠️ | Not tested |
-| Trips | ❌ | ✅ | ✅ | ⚠️ | Create failed |
-
----
-
-## 🐛 Issues Found
-
-### 1. Trip Creation Validation Error (422)
-**Endpoint:** `POST /api/v1/trips`
-
-**Problem:** The trip creation endpoint returns a 422 validation error.
-
-**Possible Causes:**
-1. `trip_type` field expects different values than "PICKUP"
-2. Date format issue with `trip_date`
-3. Missing required fields
-4. Foreign key constraint issues
-
-**Recommendation:** Check the `TripCreate` model in `models.py` for exact field requirements.
-
----
-
-## 🎯 Recommendations
+## 🔧 Required Fixes
 
 ### High Priority
-1. ✅ **Fix Trip Creation** - Investigate the 422 validation error
-2. ⚠️ **Add DELETE Tests** - Test all DELETE endpoints for completeness
-3. ⚠️ **Add Error Handling Tests** - Test invalid inputs, unauthorized access, etc.
+1. **Update Driver Queries** - Remove `kyc_verified`, `aadhar_number`, `licence_url`, `aadhar_url`
+2. **Update Bus Queries** - Change `bus_number` to `registration_number`, remove image URLs
+3. **Update Student Queries** - Change `class_section` to `class_id`, add separate route fields
+4. **Fix Driver Creation** - Update INSERT statement to match schema
 
 ### Medium Priority
-4. 📝 **Add Pagination Tests** - Test list endpoints with pagination
-5. 🔍 **Add Search/Filter Tests** - Test query parameters
-6. 🔒 **Add Security Tests** - Test unauthorized access, invalid tokens
+1. **Create Missing Stored Procedures** - Add `get_all_pickup` and `get_all_drop`
+2. **Update Models** - Ensure Pydantic models match database schema
+3. **Test Data Cleanup** - Add unique phone numbers for testing
 
 ### Low Priority
-7. 📊 **Performance Tests** - Load testing for concurrent requests
-8. 🧪 **Integration Tests** - Test complete workflows (e.g., create parent → create student → assign to route)
+1. **Error Handling** - Improve error messages for schema mismatches
+2. **Documentation** - Update API docs with correct field names
 
----
+## 📈 Progress Made
 
-## 🎉 Conclusion
+### ✅ Fixed Issues
+- ✅ Parent table queries updated (removed `dob`, `state`, `country`, `failed_login_attempts`)
+- ✅ Parent FCM token functionality working
+- ✅ Authentication system fully functional
+- ✅ Route and Route Stop operations working
+- ✅ Basic CRUD operations for most entities
 
-The School Transport Management API is **97.7% functional** with excellent coverage across all major entities. The authentication system works flawlessly, and all CRUD operations (except Trip creation) are functioning correctly.
+### 🔄 Next Steps
+1. Fix remaining database schema mismatches
+2. Update all models to match actual database
+3. Create missing stored procedures
+4. Run comprehensive test suite
+5. Update API documentation
 
-### Key Strengths:
-✅ Robust authentication system  
-✅ Comprehensive CRUD operations  
-✅ Proper database connectivity  
-✅ Well-structured API endpoints  
-✅ Good data validation  
+## 🎯 Current API Status
 
-### Areas for Improvement:
-⚠️ Fix Trip creation validation  
-⚠️ Add DELETE operation tests  
-⚠️ Enhance error handling coverage  
+**Core Functionality**: ✅ Working  
+**Authentication**: ✅ Fully Functional  
+**Admin Management**: ✅ Working  
+**Parent Management**: ✅ Mostly Working  
+**Driver Management**: ❌ Needs Schema Fix  
+**Bus Management**: ❌ Needs Schema Fix  
+**Student Management**: ❌ Needs Schema Fix  
+**Route Management**: ✅ Working  
+**Trip Management**: ✅ Basic Operations Working  
+**Error Handling**: ✅ Working  
 
----
+**Overall Status**: 🟡 Partially Functional (56% success rate)
 
-## 📖 API Documentation
-
-For interactive testing and detailed endpoint documentation:
-- **Swagger UI:** http://localhost:8080/docs
-- **ReDoc:** http://localhost:8080/redoc
-
----
-
-**Generated:** 2026-01-26 08:16:20 IST  
-**Test Script:** `test_all_endpoints.py`  
-**Results File:** `test_results.json`
+The API foundation is solid with authentication and core operations working. The remaining issues are primarily database schema alignment problems that can be resolved with targeted fixes.
