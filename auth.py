@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
-import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from config import get_settings
@@ -9,33 +8,6 @@ from models import TokenData
 
 settings = get_settings()
 security = HTTPBearer(auto_error=False)
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against a hash"""
-    if not plain_password or not hashed_password:
-        return False
-    try:
-        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
-    except Exception:
-        return False
-
-def get_password_hash(password: str) -> str:
-    """Hash a password using bcrypt"""
-    if not password:
-        raise ValueError("Password cannot be empty")
-    
-    # Convert to bytes
-    password_bytes = password.encode('utf-8')
-    
-    # Truncate to 72 bytes if necessary (bcrypt limitation)
-    if len(password_bytes) > 72:
-        password_bytes = password_bytes[:72]
-    
-    # Generate salt and hash
-    salt = bcrypt.gensalt()
-    hashed = bcrypt.hashpw(password_bytes, salt)
-    
-    return hashed.decode('utf-8')
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     """Create a JWT access token"""

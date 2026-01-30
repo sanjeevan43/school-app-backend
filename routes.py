@@ -4,7 +4,7 @@ from datetime import date, datetime
 import uuid
 from database import get_db
 from models import *
-from auth import get_password_hash, verify_password, create_access_token
+from auth import create_access_token
 from encryption import encrypt_data, decrypt_data
 
 router = APIRouter()
@@ -101,8 +101,8 @@ async def login(login_data: LoginRequest):
             if not user:
                 raise HTTPException(status_code=401, detail="Invalid phone number or password")
             
-            # Verify password
-            if not verify_password(login_data.password, user['password_hash']):
+            # Direct password comparison (UI handles hashing)
+            if str(login_data.password) != str(user['password_hash']):
                 raise HTTPException(status_code=401, detail="Invalid phone number or password")
             
             if user['status'] != 'ACTIVE':
@@ -116,6 +116,30 @@ async def login(login_data: LoginRequest):
             
             access_token = create_access_token(data={"sub": user['user_id'], "user_type": user['user_type'], "phone": login_data.phone})
             return {"access_token": access_token, "token_type": "bearer"}
+
+@router.get("/auth/debug-users", tags=["Authentication"])
+async def debug_users():
+    """Debug endpoint to check existing users"""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                result = {"admins": [], "parents": [], "drivers": []}
+                
+                # Check admins
+                cursor.execute("SELECT admin_id, phone, password_hash FROM admins LIMIT 5")
+                result["admins"] = [dict(row) for row in cursor.fetchall()]
+                
+                # Check parents
+                cursor.execute("SELECT parent_id, phone, password_hash FROM parents LIMIT 5")
+                result["parents"] = [dict(row) for row in cursor.fetchall()]
+                
+                # Check drivers
+                cursor.execute("SELECT driver_id, phone, password_hash FROM drivers LIMIT 5")
+                result["drivers"] = [dict(row) for row in cursor.fetchall()]
+                
+                return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.get("/auth/profile", tags=["Authentication"])
 async def get_user_profile():
@@ -166,36 +190,40 @@ async def get_user_profile():
 @router.post("/admins", response_model=AdminResponse, status_code=status.HTTP_201_CREATED, tags=["Admins"])
 async def create_admin(admin: AdminCreate):
     """Create a new admin (public endpoint for initial setup)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            # Check if phone already exists
-            cursor.execute("SELECT admin_id FROM admins WHERE phone = %s", (admin.phone,))
-            if cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Phone number already registered"
-                )
-            
-            # Check if email already exists
-            if admin.email:
-                cursor.execute("SELECT admin_id FROM admins WHERE email = %s", (admin.email,))
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                # Check if phone already exists
+                cursor.execute("SELECT admin_id FROM admins WHERE phone = %s", (admin.phone,))
                 if cursor.fetchone():
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Email already registered"
+                        detail="Phone number already registered"
                     )
-            
-            admin_id = str(uuid.uuid4())
-            password_hash = get_password_hash(admin.password)
-            
-            cursor.execute(
-                """INSERT INTO admins (admin_id, phone, email, password_hash, name)
-                   VALUES (%s, %s, %s, %s, %s)""",
-                (admin_id, admin.phone, admin.email, password_hash, admin.name)
-            )
-            
-            cursor.execute("SELECT admin_id, phone, email, password_hash, name, status, last_login_at, created_at, updated_at FROM admins WHERE admin_id = %s", (admin_id,))
-            return cursor.fetchone()
+                
+                # Check if email already exists
+                if admin.email:
+                    cursor.execute("SELECT admin_id FROM admins WHERE email = %s", (admin.email,))
+                    if cursor.fetchone():
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Email already registered"
+                        )
+                
+                admin_id = str(uuid.uuid4())
+                
+                cursor.execute(
+                    """INSERT INTO admins (admin_id, phone, email, password_hash, name)
+                       VALUES (%s, %s, %s, %s, %s)""",
+                    (admin_id, admin.phone, admin.email, admin.password, admin.name)
+                )
+                
+                cursor.execute("SELECT admin_id, phone, email, password_hash, name, status, last_login_at, created_at, updated_at FROM admins WHERE admin_id = %s", (admin_id,))
+                return cursor.fetchone()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.get("/admins/profile", response_model=AdminResponse, tags=["Admins"])
 async def get_admin_profile():
@@ -298,18 +326,17 @@ async def create_parent(parent: ParentCreate):
                     )
             
             parent_id = str(uuid.uuid4())
-            password_hash = get_password_hash(parent.password)
             
             cursor.execute(
                 """INSERT INTO parents (parent_id, phone, email, password_hash, name, 
-                   parent_role, door_no, street, city, district, pincode, fcm_token)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (parent_id, parent.phone, parent.email, password_hash, parent.name,
+                   parent_role, door_no, street, city, district, pincode)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (parent_id, parent.phone, parent.email, parent.password, parent.name,
                  parent.parent_role, parent.door_no, parent.street, parent.city, parent.district,
-                 parent.pincode, parent.fcm_token)
+                 parent.pincode)
             )
             
-            cursor.execute("SELECT parent_id, phone, email, password_hash, name, parent_role, door_no, street, city, district, pincode, fcm_token, parents_active_status, last_login_at, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
+            cursor.execute("SELECT parent_id, phone, email, password_hash, name, parent_role, door_no, street, city, district, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
             return cursor.fetchone()
 
 @router.get("/parents/profile", response_model=ParentResponse, tags=["Parents"])
@@ -318,7 +345,7 @@ async def get_parent_profile():
     try:
         with get_db() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT parent_id, phone, email, password_hash, name, parent_role, door_no, street, city, district, pincode, fcm_token, parents_active_status, last_login_at, created_at, updated_at FROM parents ORDER BY created_at DESC LIMIT 1")
+                cursor.execute("SELECT parent_id, phone, email, password_hash, name, parent_role, door_no, street, city, district, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents ORDER BY created_at DESC LIMIT 1")
                 parent = cursor.fetchone()
                 if not parent:
                     raise HTTPException(status_code=404, detail="No parent found. Please create a parent first.")
@@ -334,7 +361,7 @@ async def get_all_parents():
     try:
         with get_db() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT parent_id, phone, email, password_hash, name, parent_role, door_no, street, city, district, pincode, fcm_token, parents_active_status, last_login_at, created_at, updated_at FROM parents ORDER BY created_at DESC")
+                cursor.execute("SELECT parent_id, phone, email, password_hash, name, parent_role, door_no, street, city, district, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents ORDER BY created_at DESC")
                 result = cursor.fetchall()
                 
                 # Convert to plain dict to avoid Pydantic issues
@@ -417,13 +444,12 @@ async def create_driver(driver: DriverCreate):
                 )
             
             driver_id = str(uuid.uuid4())
-            password_hash = get_password_hash(driver.password)
             
             cursor.execute(
                 """INSERT INTO drivers (driver_id, name, phone, email, password_hash, dob, licence_number, 
                    licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (driver_id, driver.name, driver.phone, driver.email, password_hash, driver.dob,
+                (driver_id, driver.name, driver.phone, driver.email, driver.password, driver.dob,
                  driver.licence_number, driver.licence_expiry, driver.aadhar_number,
                  driver.licence_url, driver.aadhar_url, driver.photo_url, driver.fcm_token)
             )
@@ -885,14 +911,14 @@ async def create_student(student: StudentCreate):
             
             cursor.execute(
                 """INSERT INTO students (student_id, parent_id, s_parent_id, name, dob, 
-                   class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                   class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, fcm_token)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (student_id, student.parent_id, student.s_parent_id, student.name, student.dob,
                  student.class_section, student.route_id, student.pickup_stop_id, student.drop_stop_id,
-                 student.pickup_stop_order, student.drop_stop_order, student.emergency_contact, student.student_photo_url)
+                 student.pickup_stop_order, student.drop_stop_order, student.emergency_contact, student.student_photo_url, student.fcm_token)
             )
             
-            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
+            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, fcm_token, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
             return cursor.fetchone()
 
 @router.get("/students", tags=["Students"])
@@ -901,7 +927,7 @@ async def get_all_students():
     try:
         with get_db() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, student_status, transport_status, created_at, updated_at FROM students ORDER BY name")
+                cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, fcm_token, student_status, transport_status, created_at, updated_at FROM students ORDER BY name")
                 result = cursor.fetchall()
                 return [dict(student) for student in result] if result else []
     except Exception as e:
@@ -917,7 +943,7 @@ async def get_students_by_parent(parent_id: str):
     with get_db() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, student_status, transport_status, created_at, updated_at FROM students WHERE parent_id = %s OR s_parent_id = %s ORDER BY name",
+                "SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, fcm_token, student_status, transport_status, created_at, updated_at FROM students WHERE parent_id = %s OR s_parent_id = %s ORDER BY name",
                 (parent_id, parent_id)
             )
             return cursor.fetchall()
@@ -927,7 +953,7 @@ async def get_student(student_id: str):
     """Get student by ID (admin only)"""
     with get_db() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
+            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, fcm_token, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
             student = cursor.fetchone()
             if not student:
                 raise HTTPException(status_code=404, detail="Student not found")
@@ -955,7 +981,28 @@ async def update_student(student_id: str, student_update: StudentUpdate):
                 query = f"UPDATE students SET {', '.join(update_fields)} WHERE student_id = %s"
                 cursor.execute(query, tuple(update_values))
             
-            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
+            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, fcm_token, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
+            return cursor.fetchone()
+
+@router.put("/students/{student_id}/fcm-token", tags=["Students"])
+async def update_student_fcm_token(student_id: str, fcm_data: dict):
+    """Update student FCM token"""
+    fcm_token = fcm_data.get("fcm_token")
+    if not fcm_token:
+        raise HTTPException(status_code=400, detail="FCM token is required")
+    
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT student_id FROM students WHERE student_id = %s", (student_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Student not found")
+            
+            cursor.execute(
+                "UPDATE students SET fcm_token = %s WHERE student_id = %s",
+                (fcm_token, student_id)
+            )
+            
+            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, fcm_token, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
             return cursor.fetchone()
 
 @router.delete("/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Students"])
@@ -966,10 +1013,6 @@ async def delete_student(student_id: str):
             cursor.execute("DELETE FROM students WHERE student_id = %s", (student_id,))
             if cursor.rowcount == 0:
                 raise HTTPException(status_code=404, detail="Student not found")
-
-# =====================================================
-# TRIP ROUTES
-# =====================================================
 
 @router.post("/trips", response_model=TripResponse, status_code=status.HTTP_201_CREATED, tags=["Trips"])
 async def create_trip(trip: TripCreate):
@@ -1066,67 +1109,270 @@ async def update_trip(trip_id: str, trip_update: TripUpdate):
             cursor.execute("SELECT trip_id, bus_id, driver_id, route_id, trip_date, trip_type, status, current_stop_order, started_at, ended_at, created_at, updated_at FROM trips WHERE trip_id = %s", (trip_id,))
             return cursor.fetchone()
 
+@router.post("/trips/{trip_id}/start", tags=["Trips"])
+async def start_trip(trip_id: str):
+    """Start a trip - Set current_stop_order = 0 and notify FIRST stop students"""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                # Get trip details
+                cursor.execute("SELECT route_id, status FROM trips WHERE trip_id = %s", (trip_id,))
+                trip = cursor.fetchone()
+                if not trip:
+                    raise HTTPException(status_code=404, detail="Trip not found")
+                
+                if trip['status'] != 'NOT_STARTED':
+                    raise HTTPException(status_code=400, detail="Trip already started")
+                
+                # Set current_stop_order = 0 (before first stop)
+                cursor.execute(
+                    "UPDATE trips SET status = %s, current_stop_order = %s, started_at = %s WHERE trip_id = %s",
+                    ('ONGOING', 0, datetime.utcnow(), trip_id)
+                )
+                
+                # Get FIRST stop (stop_order = 1)
+                cursor.execute(
+                    "SELECT stop_id FROM route_stops WHERE route_id = %s AND stop_order = %s LIMIT 1",
+                    (trip['route_id'], 1)
+                )
+                first_stop = cursor.fetchone()
+                
+                if not first_stop:
+                    return {"message": "Trip started but no stops found", "notifications_sent": 0, "fcm_tokens": []}
+                
+                # Get students for FIRST stop only
+                cursor.execute(
+                    "SELECT fcm_token FROM students WHERE pickup_stop_id = %s AND fcm_token IS NOT NULL AND fcm_token != ''",
+                    (first_stop['stop_id'],)
+                )
+                fcm_tokens = [row['fcm_token'] for row in cursor.fetchall()]
+                
+                return {
+                    "message": "Trip started - First stop students notified",
+                    "current_stop_order": 0,
+                    "next_stop_order": 1,
+                    "notifications_sent": len(fcm_tokens),
+                    "fcm_tokens": fcm_tokens,
+                    "notification_message": "Bus is approaching your stop. Please be ready."
+                }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@router.post("/trips/{trip_id}/stop-reached", tags=["Trips"])
+async def stop_reached(trip_id: str):
+    """Mark stop as reached, increment current_stop_order, notify NEXT stop students"""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                # Get current trip status
+                cursor.execute(
+                    "SELECT route_id, current_stop_order, status FROM trips WHERE trip_id = %s",
+                    (trip_id,)
+                )
+                trip = cursor.fetchone()
+                if not trip:
+                    raise HTTPException(status_code=404, detail="Trip not found")
+                
+                if trip['status'] != 'ONGOING':
+                    raise HTTPException(status_code=400, detail=f"Trip not in progress. Current status: {trip['status']}")
+                
+                # Increment current_stop_order
+                new_current_stop = trip['current_stop_order'] + 1
+                
+                # Update trip
+                cursor.execute(
+                    "UPDATE trips SET current_stop_order = %s WHERE trip_id = %s",
+                    (new_current_stop, trip_id)
+                )
+                
+                # Get NEXT stop (current + 1)
+                next_stop_order = new_current_stop + 1
+                cursor.execute(
+                    "SELECT stop_id, stop_name FROM route_stops WHERE route_id = %s AND stop_order = %s LIMIT 1",
+                    (trip['route_id'], next_stop_order)
+                )
+                next_stop = cursor.fetchone()
+                
+                if not next_stop:
+                    # No more stops - complete trip
+                    cursor.execute(
+                        "UPDATE trips SET status = %s, ended_at = %s WHERE trip_id = %s",
+                        ('COMPLETED', datetime.utcnow(), trip_id)
+                    )
+                    return {
+                        "message": "Trip completed - No more stops",
+                        "current_stop_order": new_current_stop,
+                        "notifications_sent": 0,
+                        "fcm_tokens": []
+                    }
+                
+                # Get students for NEXT stop ONLY
+                cursor.execute(
+                    "SELECT fcm_token FROM students WHERE pickup_stop_id = %s AND fcm_token IS NOT NULL AND fcm_token != ''",
+                    (next_stop['stop_id'],)
+                )
+                fcm_tokens = [row['fcm_token'] for row in cursor.fetchall()]
+                
+                return {
+                    "message": f"Stop reached - Next stop students notified",
+                    "current_stop_order": new_current_stop,
+                    "next_stop_order": next_stop_order,
+                    "next_stop_name": next_stop['stop_name'],
+                    "notifications_sent": len(fcm_tokens),
+                    "fcm_tokens": fcm_tokens,
+                    "notification_message": "Bus has left the previous stop and is coming to your stop."
+                }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@router.get("/trips/{trip_id}/status", tags=["Trips"])
+async def get_trip_status(trip_id: str):
+    """Get trip status and current position"""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT trip_id, route_id, status, current_stop_order, started_at, ended_at FROM trips WHERE trip_id = %s",
+                (trip_id,)
+            )
+            trip = cursor.fetchone()
+            if not trip:
+                raise HTTPException(status_code=404, detail="Trip not found")
+            
+            return dict(trip)
+
+
+@router.get("/trips/{trip_id}/current-stop-students", tags=["Trips"])
+async def get_current_stop_students_endpoint(trip_id: str):
+    """Get students for current stop with FCM tokens"""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                # Get trip details
+                cursor.execute(
+                    "SELECT route_id, current_stop_order, status FROM trips WHERE trip_id = %s",
+                    (trip_id,)
+                )
+                trip = cursor.fetchone()
+                if not trip:
+                    raise HTTPException(status_code=404, detail="Trip not found")
+                
+                if trip['status'] == 'NOT_STARTED':
+                    raise HTTPException(status_code=400, detail="Trip not started yet. Use /trips/{trip_id}/start first")
+                
+                if trip['status'] == 'COMPLETED':
+                    raise HTTPException(status_code=400, detail="Trip already completed")
+                
+                # Get current stop (where bus currently is)
+                cursor.execute(
+                    "SELECT stop_id, stop_name FROM route_stops WHERE route_id = %s AND stop_order = %s",
+                    (trip['route_id'], trip['current_stop_order'])
+                )
+                current_stop = cursor.fetchone()
+                
+                if not current_stop:
+                    return {
+                        "trip_status": trip['status'],
+                        "current_stop_order": trip['current_stop_order'],
+                        "message": "No current stop found",
+                        "students_count": 0,
+                        "students": []
+                    }
+                
+                # Get students with FCM tokens for current stop
+                cursor.execute(
+                    "SELECT student_id, name, fcm_token FROM students WHERE pickup_stop_id = %s AND fcm_token IS NOT NULL AND fcm_token != ''",
+                    (current_stop['stop_id'],)
+                )
+                students = cursor.fetchall()
+                
+                return {
+                    "trip_status": trip['status'],
+                    "current_stop_order": trip['current_stop_order'],
+                    "current_stop_name": current_stop['stop_name'],
+                    "students_count": len(students),
+                    "students": [dict(student) for student in students]
+                }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
 @router.delete("/trips/{trip_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Trips"])
 async def delete_trip(trip_id: str):
     """Delete trip (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM trips WHERE trip_id = %s", (trip_id,))
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Trip not found")
-
-# =====================================================
-# FCM TOKEN ROUTES
-# =====================================================
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("DELETE FROM trips WHERE trip_id = %s", (trip_id,))
+                if cursor.rowcount == 0:
+                    raise HTTPException(status_code=404, detail="Trip not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.put("/parents/{parent_id}/fcm-token", tags=["Parents"])
 async def update_parent_fcm_token(parent_id: str, fcm_data: dict):
     """Update parent FCM token"""
-    fcm_token = fcm_data.get("fcm_token")
-    if not fcm_token:
-        raise HTTPException(status_code=400, detail="FCM token is required")
-    
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Parent not found")
-            
-            cursor.execute(
-                "UPDATE parents SET fcm_token = %s WHERE parent_id = %s",
-                (fcm_token, parent_id)
-            )
-            
-            cursor.execute("SELECT parent_id, phone, email, password_hash, name, parent_role, door_no, street, city, district, pincode, fcm_token, parents_active_status, last_login_at, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
-            return cursor.fetchone()
+    try:
+        fcm_token = fcm_data.get("fcm_token")
+        if not fcm_token:
+            raise HTTPException(status_code=400, detail="FCM token is required")
+        
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,))
+                if not cursor.fetchone():
+                    raise HTTPException(status_code=404, detail="Parent not found")
+                
+                cursor.execute(
+                    "UPDATE parents SET fcm_token = %s WHERE parent_id = %s",
+                    (fcm_token, parent_id)
+                )
+                
+                cursor.execute("SELECT parent_id, phone, email, password_hash, name, parent_role, door_no, street, city, district, pincode, fcm_token, parents_active_status, last_login_at, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
+                return cursor.fetchone()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.put("/parents/{parent_id}/assign-student", response_model=ParentResponse, tags=["Parents"])
 async def assign_student_to_parent(parent_id: str, student_data: dict):
     """Assign a student to a parent"""
-    student_id = student_data.get("student_id")
-    if not student_id:
-        raise HTTPException(status_code=400, detail="Student ID is required")
-    
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            # Verify parent exists
-            cursor.execute("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Parent not found")
-            
-            # Verify student exists
-            cursor.execute("SELECT student_id FROM students WHERE student_id = %s", (student_id,))
-            if not cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Student with ID {student_id} not found"
-                )
-            
-            # Note: Parent-student relationship is managed through students table
-            # No need to update parents table as students already reference parent_id
-            
-            cursor.execute("SELECT parent_id, phone, email, password_hash, name, dob, parent_role, door_no, street, city, district, state, country, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
-            return cursor.fetchone()
+    try:
+        student_id = student_data.get("student_id")
+        if not student_id:
+            raise HTTPException(status_code=400, detail="Student ID is required")
+        
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                # Verify parent exists
+                cursor.execute("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,))
+                if not cursor.fetchone():
+                    raise HTTPException(status_code=404, detail="Parent not found")
+                
+                # Verify student exists
+                cursor.execute("SELECT student_id FROM students WHERE student_id = %s", (student_id,))
+                if not cursor.fetchone():
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Student with ID {student_id} not found"
+                    )
+                
+                # Note: Parent-student relationship is managed through students table
+                # No need to update parents table as students already reference parent_id
+                
+                cursor.execute("SELECT parent_id, phone, email, password_hash, name, dob, parent_role, door_no, street, city, district, state, country, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
+                return cursor.fetchone()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 # =====================================================
 # STORED PROCEDURE ROUTES
@@ -1134,39 +1380,274 @@ async def assign_student_to_parent(parent_id: str, student_data: dict):
 
 @router.get("/routes/{route_id}/stops", tags=["Route Stops"])
 async def get_route_stops_ordered(route_id: str):
-    """Get route stops in order using stored procedure"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.callproc('get_route_stops', [route_id])
-            result = cursor.fetchall()
-            return [dict(stop) for stop in result] if result else []
+    """Get route stops in order"""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT stop_id, route_id, stop_name, latitude, longitude, stop_order, created_at FROM route_stops WHERE route_id = %s ORDER BY stop_order",
+                    (route_id,)
+                )
+                result = cursor.fetchall()
+                return [dict(stop) for stop in result] if result else []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.get("/trips/pickup-schedule", tags=["Trips"])
 async def get_all_pickup_schedule():
-    """Get all pickup schedule using stored procedure"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.callproc('get_all_pickup')
-            result = cursor.fetchall()
-            return [dict(pickup) for pickup in result] if result else []
+    """Get all pickup schedule"""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                query = """
+                SELECT 
+                    t.trip_id,
+                    t.trip_date,
+                    t.trip_type,
+                    t.status as trip_status,
+                    r.name as route_name,
+                    b.bus_number,
+                    d.name as driver_name,
+                    rs.stop_name,
+                    rs.stop_order,
+                    s.name as student_name,
+                    s.student_id
+                FROM trips t
+                JOIN routes r ON t.route_id = r.route_id
+                JOIN buses b ON t.bus_id = b.bus_id
+                JOIN drivers d ON t.driver_id = d.driver_id
+                JOIN route_stops rs ON r.route_id = rs.route_id
+                JOIN students s ON s.pickup_stop_id = rs.stop_id
+                WHERE t.trip_type = 'PICKUP'
+                ORDER BY t.trip_date DESC, rs.stop_order, s.name
+                """
+                cursor.execute(query)
+                result = cursor.fetchall()
+                return [dict(pickup) for pickup in result] if result else []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.get("/trips/drop-schedule", tags=["Trips"])
 async def get_all_drop_schedule():
-    """Get all drop schedule using stored procedure"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.callproc('get_all_drop')
-            result = cursor.fetchall()
-            return [dict(drop) for drop in result] if result else []
+    """Get all drop schedule"""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                query = """
+                SELECT 
+                    t.trip_id,
+                    t.trip_date,
+                    t.trip_type,
+                    t.status as trip_status,
+                    r.name as route_name,
+                    b.bus_number,
+                    d.name as driver_name,
+                    rs.stop_name,
+                    rs.stop_order,
+                    s.name as student_name,
+                    s.student_id
+                FROM trips t
+                JOIN routes r ON t.route_id = r.route_id
+                JOIN buses b ON t.bus_id = b.bus_id
+                JOIN drivers d ON t.driver_id = d.driver_id
+                JOIN route_stops rs ON r.route_id = rs.route_id
+                JOIN students s ON s.drop_stop_id = rs.stop_id
+                WHERE t.trip_type = 'DROP'
+                ORDER BY t.trip_date DESC, rs.stop_order, s.name
+                """
+                cursor.execute(query)
+                result = cursor.fetchall()
+                return [dict(drop) for drop in result] if result else []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.get("/trips/{trip_id}/next-stop", tags=["Trips"])
 async def get_next_stop(trip_id: str):
-    """Get next stop for a trip using stored procedure"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.callproc('get_next_stop', [trip_id])
-            result = cursor.fetchone()
-            return dict(result) if result else None
+    """Get next stop for a trip"""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                # Get current trip info
+                cursor.execute(
+                    "SELECT route_id, current_stop_order FROM trips WHERE trip_id = %s",
+                    (trip_id,)
+                )
+                trip = cursor.fetchone()
+                if not trip:
+                    raise HTTPException(status_code=404, detail="Trip not found")
+                
+                # Get next stop
+                cursor.execute(
+                    "SELECT stop_id, stop_name, stop_order FROM route_stops WHERE route_id = %s AND stop_order > %s ORDER BY stop_order LIMIT 1",
+                    (trip['route_id'], trip['current_stop_order'] or 0)
+                )
+                result = cursor.fetchone()
+                return dict(result) if result else None
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@router.post("/trips/{trip_id}/start", tags=["Trips"])
+async def start_trip(trip_id: str):
+    """Start a trip - Set current_stop_order = 0 and notify FIRST stop students"""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT route_id, status FROM trips WHERE trip_id = %s", (trip_id,))
+                trip = cursor.fetchone()
+                if not trip:
+                    raise HTTPException(status_code=404, detail="Trip not found")
+                
+                if trip['status'] != 'NOT_STARTED':
+                    raise HTTPException(status_code=400, detail="Trip already started")
+                
+                cursor.execute(
+                    "UPDATE trips SET status = %s, current_stop_order = %s, started_at = %s WHERE trip_id = %s",
+                    ('ONGOING', 0, datetime.utcnow(), trip_id)
+                )
+                
+                cursor.execute(
+                    "SELECT stop_id FROM route_stops WHERE route_id = %s AND stop_order = %s LIMIT 1",
+                    (trip['route_id'], 1)
+                )
+                first_stop = cursor.fetchone()
+                
+                if not first_stop:
+                    return {"message": "Trip started but no stops found", "notifications_sent": 0, "fcm_tokens": []}
+                
+                cursor.execute(
+                    "SELECT fcm_token FROM students WHERE pickup_stop_id = %s AND fcm_token IS NOT NULL AND fcm_token != ''",
+                    (first_stop['stop_id'],)
+                )
+                fcm_tokens = [row['fcm_token'] for row in cursor.fetchall()]
+                
+                return {
+                    "message": "Trip started - First stop students notified",
+                    "current_stop_order": 0,
+                    "next_stop_order": 1,
+                    "notifications_sent": len(fcm_tokens),
+                    "fcm_tokens": fcm_tokens
+                }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@router.post("/trips/{trip_id}/stop-reached", tags=["Trips"])
+async def stop_reached(trip_id: str):
+    """Mark stop as reached, increment current_stop_order, notify NEXT stop students"""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT route_id, current_stop_order, status FROM trips WHERE trip_id = %s",
+                    (trip_id,)
+                )
+                trip = cursor.fetchone()
+                if not trip:
+                    raise HTTPException(status_code=404, detail="Trip not found")
+                
+                if trip['status'] != 'ONGOING':
+                    raise HTTPException(status_code=400, detail=f"Trip not in progress. Current status: {trip['status']}")
+                
+                new_current_stop = trip['current_stop_order'] + 1
+                
+                cursor.execute(
+                    "UPDATE trips SET current_stop_order = %s WHERE trip_id = %s",
+                    (new_current_stop, trip_id)
+                )
+                
+                next_stop_order = new_current_stop + 1
+                cursor.execute(
+                    "SELECT stop_id, stop_name FROM route_stops WHERE route_id = %s AND stop_order = %s LIMIT 1",
+                    (trip['route_id'], next_stop_order)
+                )
+                next_stop = cursor.fetchone()
+                
+                if not next_stop:
+                    cursor.execute(
+                        "UPDATE trips SET status = %s, ended_at = %s WHERE trip_id = %s",
+                        ('COMPLETED', datetime.utcnow(), trip_id)
+                    )
+                    return {
+                        "message": "Trip completed - No more stops",
+                        "current_stop_order": new_current_stop,
+                        "notifications_sent": 0,
+                        "fcm_tokens": []
+                    }
+                
+                cursor.execute(
+                    "SELECT fcm_token FROM students WHERE pickup_stop_id = %s AND fcm_token IS NOT NULL AND fcm_token != ''",
+                    (next_stop['stop_id'],)
+                )
+                fcm_tokens = [row['fcm_token'] for row in cursor.fetchall()]
+                
+                return {
+                    "message": "Stop reached - Next stop students notified",
+                    "current_stop_order": new_current_stop,
+                    "next_stop_order": next_stop_order,
+                    "next_stop_name": next_stop['stop_name'],
+                    "notifications_sent": len(fcm_tokens),
+                    "fcm_tokens": fcm_tokens
+                }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@router.get("/trips/{trip_id}/current-stop-students", tags=["Trips"])
+async def get_current_stop_students_endpoint(trip_id: str):
+    """Get students for current stop with FCM tokens"""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT route_id, current_stop_order, status FROM trips WHERE trip_id = %s",
+                    (trip_id,)
+                )
+                trip = cursor.fetchone()
+                if not trip:
+                    raise HTTPException(status_code=404, detail="Trip not found")
+                
+                if trip['status'] == 'NOT_STARTED':
+                    raise HTTPException(status_code=400, detail="Trip not started yet. Use /trips/{trip_id}/start first")
+                
+                if trip['status'] == 'COMPLETED':
+                    raise HTTPException(status_code=400, detail="Trip already completed")
+                
+                cursor.execute(
+                    "SELECT stop_id, stop_name FROM route_stops WHERE route_id = %s AND stop_order = %s",
+                    (trip['route_id'], trip['current_stop_order'])
+                )
+                current_stop = cursor.fetchone()
+                
+                if not current_stop:
+                    return {
+                        "trip_status": trip['status'],
+                        "current_stop_order": trip['current_stop_order'],
+                        "message": "No current stop found",
+                        "students_count": 0,
+                        "students": []
+                    }
+                
+                cursor.execute(
+                    "SELECT student_id, name, fcm_token FROM students WHERE pickup_stop_id = %s AND fcm_token IS NOT NULL AND fcm_token != ''",
+                    (current_stop['stop_id'],)
+                )
+                students = cursor.fetchall()
+                
+                return {
+                    "trip_status": trip['status'],
+                    "current_stop_order": trip['current_stop_order'],
+                    "current_stop_name": current_stop['stop_name'],
+                    "students_count": len(students),
+                    "students": [dict(student) for student in students]
+                }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 # =====================================================
 # ERROR HANDLING ROUTES
@@ -1175,17 +1656,20 @@ async def get_next_stop(trip_id: str):
 @router.post("/error-handling", response_model=ErrorHandlingResponse, status_code=status.HTTP_201_CREATED, tags=["Error Handling"])
 async def create_error_log(error: ErrorHandlingCreate):
     """Create a new error log (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            error_id = str(uuid.uuid4())
-            
-            cursor.execute(
-                "INSERT INTO error_handling (error_id, error_type, error_code, error_description) VALUES (%s, %s, %s, %s)",
-                (error_id, error.error_type, error.error_code, error.error_description)
-            )
-            
-            cursor.execute("SELECT error_id, error_type, error_code, error_description, created_at FROM error_handling WHERE error_id = %s", (error_id,))
-            return cursor.fetchone()
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                error_id = str(uuid.uuid4())
+                
+                cursor.execute(
+                    "INSERT INTO error_handling (error_id, error_type, error_code, error_description) VALUES (%s, %s, %s, %s)",
+                    (error_id, error.error_type, error.error_code, error.error_description)
+                )
+                
+                cursor.execute("SELECT error_id, error_type, error_code, error_description, created_at FROM error_handling WHERE error_id = %s", (error_id,))
+                return cursor.fetchone()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.get("/error-handling", tags=["Error Handling"])
 async def get_all_error_logs():
@@ -1202,65 +1686,85 @@ async def get_all_error_logs():
 @router.get("/error-handling/{error_id}", response_model=ErrorHandlingResponse, tags=["Error Handling"])
 async def get_error_log(error_id: str):
     """Get error log by ID (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT error_id, error_type, error_code, error_description, created_at FROM error_handling WHERE error_id = %s", (error_id,))
-            error = cursor.fetchone()
-            if not error:
-                raise HTTPException(status_code=404, detail="Error log not found")
-            return error
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT error_id, error_type, error_code, error_description, created_at FROM error_handling WHERE error_id = %s", (error_id,))
+                error = cursor.fetchone()
+                if not error:
+                    raise HTTPException(status_code=404, detail="Error log not found")
+                return error
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.put("/error-handling/{error_id}", response_model=ErrorHandlingResponse, tags=["Error Handling"])
 async def update_error_log(error_id: str, error_update: ErrorHandlingUpdate):
     """Update error log (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT error_id FROM error_handling WHERE error_id = %s", (error_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Error log not found")
-            
-            update_fields = []
-            update_values = []
-            
-            for field, value in error_update.dict(exclude_unset=True).items():
-                if value is not None:
-                    update_fields.append(f"{field} = %s")
-                    update_values.append(value)
-            
-            if update_fields:
-                update_values.append(error_id)
-                query = f"UPDATE error_handling SET {', '.join(update_fields)} WHERE error_id = %s"
-                cursor.execute(query, tuple(update_values))
-            
-            cursor.execute("SELECT error_id, error_type, error_code, error_description, created_at FROM error_handling WHERE error_id = %s", (error_id,))
-            return cursor.fetchone()
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT error_id FROM error_handling WHERE error_id = %s", (error_id,))
+                if not cursor.fetchone():
+                    raise HTTPException(status_code=404, detail="Error log not found")
+                
+                update_fields = []
+                update_values = []
+                
+                for field, value in error_update.dict(exclude_unset=True).items():
+                    if value is not None:
+                        update_fields.append(f"{field} = %s")
+                        update_values.append(value)
+                
+                if update_fields:
+                    update_values.append(error_id)
+                    query = f"UPDATE error_handling SET {', '.join(update_fields)} WHERE error_id = %s"
+                    cursor.execute(query, tuple(update_values))
+                
+                cursor.execute("SELECT error_id, error_type, error_code, error_description, created_at FROM error_handling WHERE error_id = %s", (error_id,))
+                return cursor.fetchone()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.delete("/error-handling/{error_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Error Handling"])
 async def delete_error_log(error_id: str):
     """Delete error log (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM error_handling WHERE error_id = %s", (error_id,))
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Error log not found")
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("DELETE FROM error_handling WHERE error_id = %s", (error_id,))
+                if cursor.rowcount == 0:
+                    raise HTTPException(status_code=404, detail="Error log not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.put("/drivers/{driver_id}/fcm-token", tags=["Drivers"])
 async def update_driver_fcm_token(driver_id: str, fcm_data: dict):
     """Update driver FCM token"""
-    fcm_token = fcm_data.get("fcm_token")
-    if not fcm_token:
-        raise HTTPException(status_code=400, detail="FCM token is required")
-    
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT driver_id FROM drivers WHERE driver_id = %s", (driver_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Driver not found")
-            
-            cursor.execute(
-                "UPDATE drivers SET fcm_token = %s WHERE driver_id = %s",
-                (fcm_token, driver_id)
-            )
-            
-            cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, status, created_at, updated_at FROM drivers WHERE driver_id = %s", (driver_id,))
-            return cursor.fetchone()
+    try:
+        fcm_token = fcm_data.get("fcm_token")
+        if not fcm_token:
+            raise HTTPException(status_code=400, detail="FCM token is required")
+        
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT driver_id FROM drivers WHERE driver_id = %s", (driver_id,))
+                if not cursor.fetchone():
+                    raise HTTPException(status_code=404, detail="Driver not found")
+                
+                cursor.execute(
+                    "UPDATE drivers SET fcm_token = %s WHERE driver_id = %s",
+                    (fcm_token, driver_id)
+                )
+                
+                cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, status, created_at, updated_at FROM drivers WHERE driver_id = %s", (driver_id,))
+                return cursor.fetchone()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

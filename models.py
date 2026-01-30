@@ -74,7 +74,6 @@ class ParentBase(BaseModel):
     city: Optional[str] = Field(None, max_length=50)
     district: Optional[str] = Field(None, max_length=50)
     pincode: Optional[str] = Field(None, max_length=10)
-    fcm_token: Optional[str] = Field(None, max_length=255)
 
 class ParentCreate(ParentBase):
     password: str = Field(..., min_length=6, max_length=72)  # Password required for login
@@ -89,7 +88,6 @@ class ParentUpdate(BaseModel):
     city: Optional[str] = Field(None, max_length=50)
     district: Optional[str] = Field(None, max_length=50)
     pincode: Optional[str] = Field(None, max_length=10)
-    fcm_token: Optional[str] = Field(None, max_length=255)
     parents_active_status: Optional[UserStatus] = None
 
 class ParentResponse(ParentBase):
@@ -253,6 +251,7 @@ class StudentBase(BaseModel):
     drop_stop_order: int = Field(..., description="Order of drop stop in route")
     emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
     student_photo_url: Optional[str] = Field(None, max_length=200)
+    fcm_token: Optional[str] = Field(None, max_length=255)
 
     @validator('drop_stop_id')
     def stops_different(cls, v, values):
@@ -283,6 +282,7 @@ class StudentUpdate(BaseModel):
     drop_stop_order: Optional[int] = None
     emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
     student_photo_url: Optional[str] = Field(None, max_length=200)
+    fcm_token: Optional[str] = Field(None, max_length=255)
     student_status: Optional[StudentStatus] = None
     transport_status: Optional[TransportStatus] = None
 
