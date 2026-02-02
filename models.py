@@ -104,10 +104,8 @@ class DriverBase(BaseModel):
     name: str = Field(..., max_length=100)
     phone: int = Field(..., ge=1000000000, le=9999999999)
     email: Optional[EmailStr] = None
-    dob: Optional[date] = None
     licence_number: Optional[str] = Field(None, max_length=50)
     licence_expiry: Optional[date] = None
-    photo_url: Optional[str] = Field(None, max_length=255)
     fcm_token: Optional[str] = Field(None, max_length=255)
 
 class DriverCreate(DriverBase):
@@ -117,10 +115,8 @@ class DriverUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
     phone: Optional[int] = Field(None, ge=1000000000, le=9999999999)
     email: Optional[EmailStr] = None
-    dob: Optional[date] = None
     licence_number: Optional[str] = Field(None, max_length=50)
     licence_expiry: Optional[date] = None
-    photo_url: Optional[str] = Field(None, max_length=255)
     fcm_token: Optional[str] = Field(None, max_length=255)
     status: Optional[UserStatus] = None
 
@@ -219,7 +215,8 @@ class RouteStopBase(BaseModel):
     stop_name: str = Field(..., max_length=100)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
-    stop_order: int
+    pickup_stop_order: int
+    drop_stop_order: int
 
 class RouteStopCreate(RouteStopBase):
     pass
@@ -228,7 +225,8 @@ class RouteStopUpdate(BaseModel):
     stop_name: Optional[str] = Field(None, max_length=100)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
-    stop_order: Optional[int] = None
+    pickup_stop_order: Optional[int] = None
+    drop_stop_order: Optional[int] = None
 
 class RouteStopResponse(RouteStopBase):
     stop_id: str
@@ -247,22 +245,13 @@ class StudentBase(BaseModel):
     drop_route_id: str
     pickup_stop_id: str
     drop_stop_id: str
-    pickup_stop_order: int = Field(..., description="Order of pickup stop in route")
-    drop_stop_order: int = Field(..., description="Order of drop stop in route")
     emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
     student_photo_url: Optional[str] = Field(None, max_length=200)
-    fcm_token: Optional[str] = Field(None, max_length=255)
 
     @validator('drop_stop_id')
     def stops_different(cls, v, values):
         if v and 'pickup_stop_id' in values and v == values['pickup_stop_id']:
             raise ValueError('Pickup and drop stops must be different')
-        return v
-    
-    @validator('drop_stop_order')
-    def stop_order_valid(cls, v, values):
-        if v and 'pickup_stop_order' in values and v <= values['pickup_stop_order']:
-            raise ValueError('Drop stop order must be greater than pickup stop order')
         return v
 
 class StudentCreate(StudentBase):
@@ -278,11 +267,8 @@ class StudentUpdate(BaseModel):
     drop_route_id: Optional[str] = None
     pickup_stop_id: Optional[str] = None
     drop_stop_id: Optional[str] = None
-    pickup_stop_order: Optional[int] = None
-    drop_stop_order: Optional[int] = None
     emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
     student_photo_url: Optional[str] = Field(None, max_length=200)
-    fcm_token: Optional[str] = Field(None, max_length=255)
     student_status: Optional[StudentStatus] = None
     transport_status: Optional[TransportStatus] = None
 
@@ -352,6 +338,39 @@ class ErrorHandlingResponse(ErrorHandlingBase):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+# FCM Token Models
+class FCMTokenBase(BaseModel):
+    fcm_token: str = Field(..., max_length=255)
+    student_id: Optional[str] = None
+    parent_id: Optional[str] = None
+
+class FCMTokenCreate(FCMTokenBase):
+    pass
+
+class FCMTokenUpdate(BaseModel):
+    fcm_token: Optional[str] = Field(None, max_length=255)
+    student_id: Optional[str] = None
+    parent_id: Optional[str] = None
+
+class FCMTokenResponse(FCMTokenBase):
+    fcm_id: str
+    created_at: datetime
+    updated_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+# Bus Location Models
+class BusLocationUpdate(BaseModel):
+    trip_id: str
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
+    timestamp: Optional[datetime] = None
+
+class NotificationRequest(BaseModel):
+    trip_id: str
+    message: str
+    stop_id: Optional[str] = None
 
 # Universal login model (phone + password)
 class LoginRequest(BaseModel):

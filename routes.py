@@ -1,50 +1,838 @@
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import JSONResponse
 from typing import List, Optional
-from datetime import date, datetime
+from datetime import datetime, date
 import uuid
-from database import get_db
+import logging
+import json
+
+from database import get_db, execute_query
 from models import *
 from auth import create_access_token
 from encryption import encrypt_data, decrypt_data
+from bus_tracking import bus_tracking_service, fcm_service
 
 router = APIRouter()
-
-# Helper functions
-def check_user_exists_and_active(cursor, phone: int, user_type: str):
-    table = "parents" if user_type == "parent" else "drivers"
-    id_col = f"{table[:-1]}_id"
-    cursor.execute(f"SELECT {id_col}, status FROM {table} WHERE phone = %s", (phone,))
-    user = cursor.fetchone()
-    
-    if not user:
-        raise HTTPException(status_code=404, detail=f"{user_type.title()} not found")
-    if user['status'] != 'ACTIVE':
-        raise HTTPException(status_code=403, detail="Account inactive")
-    return user
-
-def update_entity(cursor, table: str, id_col: str, entity_id: str, update_data: dict):
-    cursor.execute(f"SELECT {id_col} FROM {table} WHERE {id_col} = %s", (entity_id,))
-    if not cursor.fetchone():
-        raise HTTPException(status_code=404, detail=f"{table[:-1].title()} not found")
-    
-    update_fields = []
-    update_values = []
-    
-    for field, value in update_data.dict(exclude_unset=True).items():
-        if value is not None:
-            update_fields.append(f"{field} = %s")
-            update_values.append(value)
-    
-    if update_fields:
-        update_values.append(entity_id)
-        query = f"UPDATE {table} SET {', '.join(update_fields)} WHERE {id_col} = %s"
-        cursor.execute(query, tuple(update_values))
-    
-    cursor.execute(f"SELECT * FROM {table} WHERE {id_col} = %s", (entity_id,))
-    return cursor.fetchone()
+logger = logging.getLogger(__name__)
 
 # =====================================================
-# ENCRYPTION/DECRYPTION ROUTES
+# AUTHENTICATION ENDPOINTS
+# =====================================================
+
+@router.post("/auth/login", response_model=Token, tags=["Authentication"])
+async def login(login_data: LoginRequest):
+    """Universal login for all user types (admin, parent, driver)"""
+    try:
+        # Check admins table
+        admin_query = "SELECT admin_id, phone, password_hash, name FROM admins WHERE phone = %s AND status = 'ACTIVE'"
+        admin = execute_query(admin_query, (login_data.phone,), fetch_one=True)
+        
+        if admin and admin['password_hash'] == login_data.password:
+            # Update last login
+            execute_query("UPDATE admins SET last_login_at = %s WHERE admin_id = %s", 
+                         (datetime.now(), admin['admin_id']))
+            
+            access_token = create_access_token(
+                data={"sub": admin['admin_id'], "user_type": "admin", "phone": admin['phone']}
+            )
+            return {"access_token": access_token, "token_type": "bearer"}
+        
+        # Check parents table
+        parent_query = "SELECT parent_id, phone, password_hash, name FROM parents WHERE phone = %s AND parents_active_status = 'ACTIVE'"
+        parent = execute_query(parent_query, (login_data.phone,), fetch_one=True)
+        
+        if parent and parent['password_hash'] == login_data.password:
+            # Update last login
+            execute_query("UPDATE parents SET last_login_at = %s WHERE parent_id = %s", 
+                         (datetime.now(), parent['parent_id']))
+            
+            access_token = create_access_token(
+                data={"sub": parent['parent_id'], "user_type": "parent", "phone": parent['phone']}
+            )
+            return {"access_token": access_token, "token_type": "bearer"}
+        
+        # Check drivers table
+        driver_query = "SELECT driver_id, phone, password_hash, name FROM drivers WHERE phone = %s AND status = 'ACTIVE'"
+        driver = execute_query(driver_query, (login_data.phone,), fetch_one=True)
+        
+        if driver and driver['password_hash'] == login_data.password:
+            access_token = create_access_token(
+                data={"sub": driver['driver_id'], "user_type": "driver", "phone": driver['phone']}
+            )
+            return {"access_token": access_token, "token_type": "bearer"}
+        
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid phone number or password"
+        )
+        
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        raise HTTPException(status_code=500, detail="Login failed")
+
+@router.get("/auth/profile", tags=["Authentication"])
+async def get_profile(phone: int):
+    """Get user profile by phone number"""
+    try:
+        # Check admins table
+        admin_query = "SELECT admin_id, phone, email, name, status, last_login_at, created_at FROM admins WHERE phone = %s"
+        admin = execute_query(admin_query, (phone,), fetch_one=True)
+        
+        if admin:
+            return {
+                "user_type": "admin",
+                "user_id": admin['admin_id'],
+                "phone": admin['phone'],
+                "email": admin['email'],
+                "name": admin['name'],
+                "status": admin['status'],
+                "last_login_at": admin['last_login_at'],
+                "created_at": admin['created_at']
+            }
+        
+        # Check parents table
+        parent_query = "SELECT parent_id, phone, email, name, parent_role, parents_active_status, last_login_at, created_at FROM parents WHERE phone = %s"
+        parent = execute_query(parent_query, (phone,), fetch_one=True)
+        
+        if parent:
+            return {
+                "user_type": "parent",
+                "user_id": parent['parent_id'],
+                "phone": parent['phone'],
+                "email": parent['email'],
+                "name": parent['name'],
+                "parent_role": parent['parent_role'],
+                "status": parent['parents_active_status'],
+                "last_login_at": parent['last_login_at'],
+                "created_at": parent['created_at']
+            }
+        
+        # Check drivers table
+        driver_query = "SELECT driver_id, phone, email, name, licence_number, status, created_at FROM drivers WHERE phone = %s"
+        driver = execute_query(driver_query, (phone,), fetch_one=True)
+        
+        if driver:
+            return {
+                "user_type": "driver",
+                "user_id": driver['driver_id'],
+                "phone": driver['phone'],
+                "email": driver['email'],
+                "name": driver['name'],
+                "licence_number": driver['licence_number'],
+                "status": driver['status'],
+                "created_at": driver['created_at']
+            }
+        
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    except Exception as e:
+        logger.error(f"Get profile error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get profile")
+
+# =====================================================
+# ADMIN ENDPOINTS
+# =====================================================
+
+@router.post("/admins", response_model=AdminResponse, tags=["Admins"])
+async def create_admin(admin: AdminCreate):
+    """Create a new admin"""
+    try:
+        admin_id = str(uuid.uuid4())
+        query = """
+        INSERT INTO admins (admin_id, phone, email, password_hash, name)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+        execute_query(query, (admin_id, admin.phone, admin.email, admin.password, admin.name))
+        
+        return await get_admin(admin_id)
+    except Exception as e:
+        logger.error(f"Create admin error: {e}")
+        raise HTTPException(status_code=400, detail="Failed to create admin")
+
+@router.get("/admins", response_model=List[AdminResponse], tags=["Admins"])
+async def get_all_admins():
+    """Get all admins"""
+    query = "SELECT * FROM admins ORDER BY created_at DESC"
+    admins = execute_query(query, fetch_all=True)
+    return admins or []
+
+@router.get("/admins/{admin_id}", response_model=AdminResponse, tags=["Admins"])
+async def get_admin(admin_id: str):
+    """Get admin by ID"""
+    query = "SELECT * FROM admins WHERE admin_id = %s"
+    admin = execute_query(query, (admin_id,), fetch_one=True)
+    if not admin:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    return admin
+
+@router.put("/admins/{admin_id}", response_model=AdminResponse, tags=["Admins"])
+async def update_admin(admin_id: str, admin_update: AdminUpdate):
+    """Update admin"""
+    update_fields = []
+    values = []
+    
+    for field, value in admin_update.dict(exclude_unset=True).items():
+        if value is not None:
+            update_fields.append(f"{field} = %s")
+            values.append(value)
+    
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    values.append(admin_id)
+    query = f"UPDATE admins SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE admin_id = %s"
+    
+    result = execute_query(query, tuple(values))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    
+    return await get_admin(admin_id)
+
+@router.delete("/admins/{admin_id}", tags=["Admins"])
+async def delete_admin(admin_id: str):
+    """Delete admin"""
+    query = "DELETE FROM admins WHERE admin_id = %s"
+    result = execute_query(query, (admin_id,))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    return {"message": "Admin deleted successfully"}
+
+# =====================================================
+# PARENT ENDPOINTS
+# =====================================================
+
+@router.post("/parents", response_model=ParentResponse, tags=["Parents"])
+async def create_parent(parent: ParentCreate):
+    """Create a new parent"""
+    try:
+        parent_id = str(uuid.uuid4())
+        query = """
+        INSERT INTO parents (parent_id, phone, email, password_hash, name, parent_role, 
+                           door_no, street, city, district, pincode)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        execute_query(query, (parent_id, parent.phone, parent.email, parent.password, 
+                             parent.name, parent.parent_role, parent.door_no, parent.street,
+                             parent.city, parent.district, parent.pincode))
+        
+        return await get_parent(parent_id)
+    except Exception as e:
+        logger.error(f"Create parent error: {e}")
+        raise HTTPException(status_code=400, detail="Failed to create parent")
+
+@router.get("/parents", response_model=List[ParentResponse], tags=["Parents"])
+async def get_all_parents():
+    """Get all parents"""
+    query = "SELECT * FROM parents ORDER BY created_at DESC"
+    parents = execute_query(query, fetch_all=True)
+    return parents or []
+
+@router.get("/parents/{parent_id}", response_model=ParentResponse, tags=["Parents"])
+async def get_parent(parent_id: str):
+    """Get parent by ID"""
+    query = "SELECT * FROM parents WHERE parent_id = %s"
+    parent = execute_query(query, (parent_id,), fetch_one=True)
+    if not parent:
+        raise HTTPException(status_code=404, detail="Parent not found")
+    return parent
+
+@router.put("/parents/{parent_id}", response_model=ParentResponse, tags=["Parents"])
+async def update_parent(parent_id: str, parent_update: ParentUpdate):
+    """Update parent"""
+    update_fields = []
+    values = []
+    
+    for field, value in parent_update.dict(exclude_unset=True).items():
+        if value is not None:
+            update_fields.append(f"{field} = %s")
+            values.append(value)
+    
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    values.append(parent_id)
+    query = f"UPDATE parents SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE parent_id = %s"
+    
+    result = execute_query(query, tuple(values))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Parent not found")
+    
+    return await get_parent(parent_id)
+
+@router.delete("/parents/{parent_id}", tags=["Parents"])
+async def delete_parent(parent_id: str):
+    """Delete parent"""
+    query = "DELETE FROM parents WHERE parent_id = %s"
+    result = execute_query(query, (parent_id,))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Parent not found")
+    return {"message": "Parent deleted successfully"}
+
+# =====================================================
+# DRIVER ENDPOINTS
+# =====================================================
+
+@router.post("/drivers", response_model=DriverResponse, tags=["Drivers"])
+async def create_driver(driver: DriverCreate):
+    """Create a new driver"""
+    try:
+        driver_id = str(uuid.uuid4())
+        query = """
+        INSERT INTO drivers (driver_id, name, phone, email, licence_number, licence_expiry, 
+                           password_hash, fcm_token)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        execute_query(query, (driver_id, driver.name, driver.phone, driver.email,
+                             driver.licence_number, driver.licence_expiry, driver.password,
+                             driver.fcm_token))
+        
+        return await get_driver(driver_id)
+    except Exception as e:
+        logger.error(f"Create driver error: {e}")
+        raise HTTPException(status_code=400, detail="Failed to create driver")
+
+@router.get("/drivers", response_model=List[DriverResponse], tags=["Drivers"])
+async def get_all_drivers():
+    """Get all drivers"""
+    query = "SELECT * FROM drivers ORDER BY created_at DESC"
+    drivers = execute_query(query, fetch_all=True)
+    return drivers or []
+
+@router.get("/drivers/{driver_id}", response_model=DriverResponse, tags=["Drivers"])
+async def get_driver(driver_id: str):
+    """Get driver by ID"""
+    query = "SELECT * FROM drivers WHERE driver_id = %s"
+    driver = execute_query(query, (driver_id,), fetch_one=True)
+    if not driver:
+        raise HTTPException(status_code=404, detail="Driver not found")
+    return driver
+
+@router.put("/drivers/{driver_id}", response_model=DriverResponse, tags=["Drivers"])
+async def update_driver(driver_id: str, driver_update: DriverUpdate):
+    """Update driver"""
+    update_fields = []
+    values = []
+    
+    for field, value in driver_update.dict(exclude_unset=True).items():
+        if value is not None:
+            update_fields.append(f"{field} = %s")
+            values.append(value)
+    
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    values.append(driver_id)
+    query = f"UPDATE drivers SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE driver_id = %s"
+    
+    result = execute_query(query, tuple(values))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Driver not found")
+    
+    return await get_driver(driver_id)
+
+@router.delete("/drivers/{driver_id}", tags=["Drivers"])
+async def delete_driver(driver_id: str):
+    """Delete driver"""
+    query = "DELETE FROM drivers WHERE driver_id = %s"
+    result = execute_query(query, (driver_id,))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Driver not found")
+    return {"message": "Driver deleted successfully"}
+
+# =====================================================
+# ROUTE ENDPOINTS
+# =====================================================
+
+@router.post("/routes", response_model=RouteResponse, tags=["Routes"])
+async def create_route(route: RouteCreate):
+    """Create a new route"""
+    try:
+        route_id = str(uuid.uuid4())
+        query = "INSERT INTO routes (route_id, name) VALUES (%s, %s)"
+        execute_query(query, (route_id, route.name))
+        
+        return await get_route(route_id)
+    except Exception as e:
+        logger.error(f"Create route error: {e}")
+        raise HTTPException(status_code=400, detail="Failed to create route")
+
+@router.get("/routes", response_model=List[RouteResponse], tags=["Routes"])
+async def get_all_routes():
+    """Get all routes"""
+    query = "SELECT * FROM routes ORDER BY created_at DESC"
+    routes = execute_query(query, fetch_all=True)
+    return routes or []
+
+@router.get("/routes/{route_id}", response_model=RouteResponse, tags=["Routes"])
+async def get_route(route_id: str):
+    """Get route by ID"""
+    query = "SELECT * FROM routes WHERE route_id = %s"
+    route = execute_query(query, (route_id,), fetch_one=True)
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+    return route
+
+@router.put("/routes/{route_id}", response_model=RouteResponse, tags=["Routes"])
+async def update_route(route_id: str, route_update: RouteUpdate):
+    """Update route"""
+    update_fields = []
+    values = []
+    
+    for field, value in route_update.dict(exclude_unset=True).items():
+        if value is not None:
+            update_fields.append(f"{field} = %s")
+            values.append(value)
+    
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    values.append(route_id)
+    query = f"UPDATE routes SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE route_id = %s"
+    
+    result = execute_query(query, tuple(values))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Route not found")
+    
+    return await get_route(route_id)
+
+@router.delete("/routes/{route_id}", tags=["Routes"])
+async def delete_route(route_id: str):
+    """Delete route"""
+    query = "DELETE FROM routes WHERE route_id = %s"
+    result = execute_query(query, (route_id,))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Route not found")
+    return {"message": "Route deleted successfully"}
+
+# =====================================================
+# ROUTE STOP ENDPOINTS
+# =====================================================
+
+@router.post("/route-stops", response_model=RouteStopResponse, tags=["Route Stops"])
+async def create_route_stop(route_stop: RouteStopCreate):
+    """Create a new route stop"""
+    try:
+        stop_id = str(uuid.uuid4())
+        query = """
+        INSERT INTO route_stops (stop_id, route_id, stop_name, latitude, longitude, 
+                               pickup_stop_order, drop_stop_order)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        execute_query(query, (stop_id, route_stop.route_id, route_stop.stop_name,
+                             route_stop.latitude, route_stop.longitude, 
+                             route_stop.pickup_stop_order, route_stop.drop_stop_order))
+        
+        return await get_route_stop(stop_id)
+    except Exception as e:
+        logger.error(f"Create route stop error: {e}")
+        raise HTTPException(status_code=400, detail="Failed to create route stop")
+
+@router.get("/route-stops", response_model=List[RouteStopResponse], tags=["Route Stops"])
+async def get_all_route_stops(route_id: Optional[str] = None):
+    """Get all route stops, optionally filtered by route"""
+    if route_id:
+        query = "SELECT * FROM route_stops WHERE route_id = %s ORDER BY pickup_stop_order"
+        stops = execute_query(query, (route_id,), fetch_all=True)
+    else:
+        query = "SELECT * FROM route_stops ORDER BY route_id, pickup_stop_order"
+        stops = execute_query(query, fetch_all=True)
+    return stops or []
+
+@router.get("/route-stops/{stop_id}", response_model=RouteStopResponse, tags=["Route Stops"])
+async def get_route_stop(stop_id: str):
+    """Get route stop by ID"""
+    query = "SELECT * FROM route_stops WHERE stop_id = %s"
+    stop = execute_query(query, (stop_id,), fetch_one=True)
+    if not stop:
+        raise HTTPException(status_code=404, detail="Route stop not found")
+    return stop
+
+@router.put("/route-stops/{stop_id}", response_model=RouteStopResponse, tags=["Route Stops"])
+async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
+    """Update route stop"""
+    update_fields = []
+    values = []
+    
+    for field, value in stop_update.dict(exclude_unset=True).items():
+        if value is not None:
+            update_fields.append(f"{field} = %s")
+            values.append(value)
+    
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    values.append(stop_id)
+    query = f"UPDATE route_stops SET {', '.join(update_fields)} WHERE stop_id = %s"
+    
+    result = execute_query(query, tuple(values))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Route stop not found")
+    
+    return await get_route_stop(stop_id)
+
+@router.delete("/route-stops/{stop_id}", tags=["Route Stops"])
+async def delete_route_stop(stop_id: str):
+    """Delete route stop"""
+    query = "DELETE FROM route_stops WHERE stop_id = %s"
+    result = execute_query(query, (stop_id,))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Route stop not found")
+    return {"message": "Route stop deleted successfully"}
+
+# =====================================================
+# BUS ENDPOINTS
+# =====================================================
+
+@router.post("/buses", response_model=BusResponse, tags=["Buses"])
+async def create_bus(bus: BusCreate):
+    """Create a new bus"""
+    try:
+        bus_id = str(uuid.uuid4())
+        query = """
+        INSERT INTO buses (bus_id, registration_number, driver_id, route_id, vehicle_type,
+                          bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date,
+                          rc_book_url, fc_certificate_url)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        execute_query(query, (bus_id, bus.registration_number, bus.driver_id, bus.route_id,
+                             bus.vehicle_type, bus.bus_brand, bus.bus_model, bus.seating_capacity,
+                             bus.rc_expiry_date, bus.fc_expiry_date, bus.rc_book_url, 
+                             bus.fc_certificate_url))
+        
+        return await get_bus(bus_id)
+    except Exception as e:
+        logger.error(f"Create bus error: {e}")
+        raise HTTPException(status_code=400, detail="Failed to create bus")
+
+@router.get("/buses", response_model=List[BusResponse], tags=["Buses"])
+async def get_all_buses():
+    """Get all buses"""
+    query = "SELECT * FROM buses ORDER BY created_at DESC"
+    buses = execute_query(query, fetch_all=True)
+    return buses or []
+
+@router.get("/buses/{bus_id}", response_model=BusResponse, tags=["Buses"])
+async def get_bus(bus_id: str):
+    """Get bus by ID"""
+    query = "SELECT * FROM buses WHERE bus_id = %s"
+    bus = execute_query(query, (bus_id,), fetch_one=True)
+    if not bus:
+        raise HTTPException(status_code=404, detail="Bus not found")
+    return bus
+
+@router.put("/buses/{bus_id}", response_model=BusResponse, tags=["Buses"])
+async def update_bus(bus_id: str, bus_update: BusUpdate):
+    """Update bus"""
+    update_fields = []
+    values = []
+    
+    for field, value in bus_update.dict(exclude_unset=True).items():
+        if value is not None:
+            update_fields.append(f"{field} = %s")
+            values.append(value)
+    
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    values.append(bus_id)
+    query = f"UPDATE buses SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE bus_id = %s"
+    
+    result = execute_query(query, tuple(values))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Bus not found")
+    
+    return await get_bus(bus_id)
+
+@router.delete("/buses/{bus_id}", tags=["Buses"])
+async def delete_bus(bus_id: str):
+    """Delete bus"""
+    query = "DELETE FROM buses WHERE bus_id = %s"
+    result = execute_query(query, (bus_id,))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Bus not found")
+    return {"message": "Bus deleted successfully"}
+
+# =====================================================
+# CLASS ENDPOINTS
+# =====================================================
+
+@router.post("/classes", response_model=ClassResponse, tags=["Classes"])
+async def create_class(class_data: ClassCreate):
+    """Create a new class"""
+    try:
+        class_id = str(uuid.uuid4())
+        query = """
+        INSERT INTO classes (class_id, class_name, section, academic_year)
+        VALUES (%s, %s, %s, %s)
+        """
+        execute_query(query, (class_id, class_data.class_name, class_data.section, 
+                             class_data.academic_year))
+        
+        return await get_class(class_id)
+    except Exception as e:
+        logger.error(f"Create class error: {e}")
+        raise HTTPException(status_code=400, detail="Failed to create class")
+
+@router.get("/classes", response_model=List[ClassResponse], tags=["Classes"])
+async def get_all_classes():
+    """Get all classes"""
+    query = "SELECT * FROM classes ORDER BY class_name, section"
+    classes = execute_query(query, fetch_all=True)
+    return classes or []
+
+@router.get("/classes/{class_id}", response_model=ClassResponse, tags=["Classes"])
+async def get_class(class_id: str):
+    """Get class by ID"""
+    query = "SELECT * FROM classes WHERE class_id = %s"
+    class_data = execute_query(query, (class_id,), fetch_one=True)
+    if not class_data:
+        raise HTTPException(status_code=404, detail="Class not found")
+    return class_data
+
+@router.put("/classes/{class_id}", response_model=ClassResponse, tags=["Classes"])
+async def update_class(class_id: str, class_update: ClassUpdate):
+    """Update class"""
+    update_fields = []
+    values = []
+    
+    for field, value in class_update.dict(exclude_unset=True).items():
+        if value is not None:
+            update_fields.append(f"{field} = %s")
+            values.append(value)
+    
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    values.append(class_id)
+    query = f"UPDATE classes SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE class_id = %s"
+    
+    result = execute_query(query, tuple(values))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Class not found")
+    
+    return await get_class(class_id)
+
+@router.delete("/classes/{class_id}", tags=["Classes"])
+async def delete_class(class_id: str):
+    """Delete class"""
+    query = "DELETE FROM classes WHERE class_id = %s"
+    result = execute_query(query, (class_id,))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Class not found")
+    return {"message": "Class deleted successfully"}
+
+# =====================================================
+# STUDENT ENDPOINTS
+# =====================================================
+
+@router.post("/students", response_model=StudentResponse, tags=["Students"])
+async def create_student(student: StudentCreate):
+    """Create a new student"""
+    try:
+        student_id = str(uuid.uuid4())
+        query = """
+        INSERT INTO students (student_id, parent_id, s_parent_id, name, dob, class_id,
+                            pickup_route_id, drop_route_id, pickup_stop_id, drop_stop_id,
+                            emergency_contact, student_photo_url)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        execute_query(query, (student_id, student.parent_id, student.s_parent_id, student.name,
+                             student.dob, student.class_id, student.pickup_route_id, 
+                             student.drop_route_id, student.pickup_stop_id, student.drop_stop_id,
+                             student.emergency_contact, student.student_photo_url))
+        
+        return await get_student(student_id)
+    except Exception as e:
+        logger.error(f"Create student error: {e}")
+        raise HTTPException(status_code=400, detail="Failed to create student")
+
+@router.get("/students", response_model=List[StudentResponse], tags=["Students"])
+async def get_all_students():
+    """Get all students"""
+    query = "SELECT * FROM students ORDER BY created_at DESC"
+    students = execute_query(query, fetch_all=True)
+    return students or []
+
+@router.get("/students/{student_id}", response_model=StudentResponse, tags=["Students"])
+async def get_student(student_id: str):
+    """Get student by ID"""
+    query = "SELECT * FROM students WHERE student_id = %s"
+    student = execute_query(query, (student_id,), fetch_one=True)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return student
+
+@router.put("/students/{student_id}", response_model=StudentResponse, tags=["Students"])
+async def update_student(student_id: str, student_update: StudentUpdate):
+    """Update student"""
+    update_fields = []
+    values = []
+    
+    for field, value in student_update.dict(exclude_unset=True).items():
+        if value is not None:
+            update_fields.append(f"{field} = %s")
+            values.append(value)
+    
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    values.append(student_id)
+    query = f"UPDATE students SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
+    
+    result = execute_query(query, tuple(values))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    return await get_student(student_id)
+
+@router.delete("/students/{student_id}", tags=["Students"])
+async def delete_student(student_id: str):
+    """Delete student"""
+    query = "DELETE FROM students WHERE student_id = %s"
+    result = execute_query(query, (student_id,))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return {"message": "Student deleted successfully"}
+
+# =====================================================
+# TRIP ENDPOINTS
+# =====================================================
+
+@router.post("/trips", response_model=TripResponse, tags=["Trips"])
+async def create_trip(trip: TripCreate):
+    """Create a new trip"""
+    try:
+        trip_id = str(uuid.uuid4())
+        query = """
+        INSERT INTO trips (trip_id, bus_id, driver_id, route_id, trip_date, trip_type)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        execute_query(query, (trip_id, trip.bus_id, trip.driver_id, trip.route_id,
+                             trip.trip_date, trip.trip_type))
+        
+        return await get_trip(trip_id)
+    except Exception as e:
+        logger.error(f"Create trip error: {e}")
+        raise HTTPException(status_code=400, detail="Failed to create trip")
+
+@router.get("/trips", response_model=List[TripResponse], tags=["Trips"])
+async def get_all_trips():
+    """Get all trips"""
+    query = "SELECT * FROM trips ORDER BY trip_date DESC, created_at DESC"
+    trips = execute_query(query, fetch_all=True)
+    return trips or []
+
+@router.get("/trips/{trip_id}", response_model=TripResponse, tags=["Trips"])
+async def get_trip(trip_id: str):
+    """Get trip by ID"""
+    query = "SELECT * FROM trips WHERE trip_id = %s"
+    trip = execute_query(query, (trip_id,), fetch_one=True)
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    return trip
+
+@router.put("/trips/{trip_id}", response_model=TripResponse, tags=["Trips"])
+async def update_trip(trip_id: str, trip_update: TripUpdate):
+    """Update trip"""
+    update_fields = []
+    values = []
+    
+    for field, value in trip_update.dict(exclude_unset=True).items():
+        if value is not None:
+            update_fields.append(f"{field} = %s")
+            values.append(value)
+    
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    values.append(trip_id)
+    query = f"UPDATE trips SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s"
+    
+    result = execute_query(query, tuple(values))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    
+    return await get_trip(trip_id)
+
+@router.delete("/trips/{trip_id}", tags=["Trips"])
+async def delete_trip(trip_id: str):
+    """Delete trip"""
+    query = "DELETE FROM trips WHERE trip_id = %s"
+    result = execute_query(query, (trip_id,))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    return {"message": "Trip deleted successfully"}
+
+# =====================================================
+# ERROR HANDLING ENDPOINTS
+# =====================================================
+
+@router.post("/error-handling", response_model=ErrorHandlingResponse, tags=["Error Handling"])
+async def create_error_log(error: ErrorHandlingCreate):
+    """Create a new error log"""
+    try:
+        error_id = str(uuid.uuid4())
+        query = """
+        INSERT INTO error_handling (error_id, error_type, error_code, error_description)
+        VALUES (%s, %s, %s, %s)
+        """
+        execute_query(query, (error_id, error.error_type, error.error_code, error.error_description))
+        
+        return await get_error_log(error_id)
+    except Exception as e:
+        logger.error(f"Create error log error: {e}")
+        raise HTTPException(status_code=400, detail="Failed to create error log")
+
+@router.get("/error-handling", response_model=List[ErrorHandlingResponse], tags=["Error Handling"])
+async def get_all_error_logs():
+    """Get all error logs"""
+    query = "SELECT * FROM error_handling ORDER BY created_at DESC"
+    errors = execute_query(query, fetch_all=True)
+    return errors or []
+
+@router.get("/error-handling/{error_id}", response_model=ErrorHandlingResponse, tags=["Error Handling"])
+async def get_error_log(error_id: str):
+    """Get error log by ID"""
+    query = "SELECT * FROM error_handling WHERE error_id = %s"
+    error = execute_query(query, (error_id,), fetch_one=True)
+    if not error:
+        raise HTTPException(status_code=404, detail="Error log not found")
+    return error
+
+@router.put("/error-handling/{error_id}", response_model=ErrorHandlingResponse, tags=["Error Handling"])
+async def update_error_log(error_id: str, error_update: ErrorHandlingUpdate):
+    """Update error log"""
+    update_fields = []
+    values = []
+    
+    for field, value in error_update.dict(exclude_unset=True).items():
+        if value is not None:
+            update_fields.append(f"{field} = %s")
+            values.append(value)
+    
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    values.append(error_id)
+    query = f"UPDATE error_handling SET {', '.join(update_fields)} WHERE error_id = %s"
+    
+    result = execute_query(query, tuple(values))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Error log not found")
+    
+    return await get_error_log(error_id)
+
+@router.delete("/error-handling/{error_id}", tags=["Error Handling"])
+async def delete_error_log(error_id: str):
+    """Delete error log"""
+    query = "DELETE FROM error_handling WHERE error_id = %s"
+    result = execute_query(query, (error_id,))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Error log not found")
+    return {"message": "Error log deleted successfully"}
+
+# =====================================================
+# ENCRYPTION ENDPOINTS
 # =====================================================
 
 @router.post("/encrypt", tags=["Encryption"])
@@ -53,12 +841,13 @@ async def encrypt_text(data: dict):
     try:
         text = data.get("text", "")
         if not text:
-            raise HTTPException(status_code=400, detail="Text is required")
+            raise HTTPException(status_code=400, detail="Text field is required")
         
         encrypted = encrypt_data(text)
         return {"encrypted_text": encrypted}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Encryption failed: {str(e)}")
+        logger.error(f"Encryption error: {e}")
+        raise HTTPException(status_code=500, detail="Encryption failed")
 
 @router.post("/decrypt", tags=["Encryption"])
 async def decrypt_text(data: dict):
@@ -66,1705 +855,441 @@ async def decrypt_text(data: dict):
     try:
         encrypted_text = data.get("encrypted_text", "")
         if not encrypted_text:
-            raise HTTPException(status_code=400, detail="Encrypted text is required")
+            raise HTTPException(status_code=400, detail="encrypted_text field is required")
         
         decrypted = decrypt_data(encrypted_text)
         return {"decrypted_text": decrypted}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Decryption failed: {str(e)}")
+        logger.error(f"Decryption error: {e}")
+        raise HTTPException(status_code=500, detail="Decryption failed")
 
 # =====================================================
-# AUTHENTICATION ROUTES
+# UTILITY ENDPOINTS
 # =====================================================
 
-@router.post("/auth/login", response_model=Token, tags=["Authentication"])
-async def login(login_data: LoginRequest):
-    """Universal login for all user types (admin, parent, driver)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            user = None
-            
-            # Try admin first
-            cursor.execute("SELECT admin_id as user_id, password_hash, 'ACTIVE' as status, 'admin' as user_type FROM admins WHERE phone = %s", (login_data.phone,))
-            user = cursor.fetchone()
-            
-            # Try parent if admin not found
-            if not user:
-                cursor.execute("SELECT parent_id as user_id, password_hash, COALESCE(parents_active_status, 'ACTIVE') as status, 'parent' as user_type FROM parents WHERE phone = %s", (login_data.phone,))
-                user = cursor.fetchone()
-            
-            # Try driver if parent not found
-            if not user:
-                cursor.execute("SELECT driver_id as user_id, password_hash, COALESCE(status, 'ACTIVE') as status, 'driver' as user_type FROM drivers WHERE phone = %s", (login_data.phone,))
-                user = cursor.fetchone()
-            
-            if not user:
-                raise HTTPException(status_code=401, detail="Invalid phone number or password")
-            
-            # Direct password comparison (UI handles hashing)
-            if str(login_data.password) != str(user['password_hash']):
-                raise HTTPException(status_code=401, detail="Invalid phone number or password")
-            
-            if user['status'] != 'ACTIVE':
-                raise HTTPException(status_code=403, detail="Account inactive")
-            
-            # Update last login
-            if user['user_type'] == 'admin':
-                cursor.execute("UPDATE admins SET last_login_at = %s WHERE admin_id = %s", (datetime.utcnow(), user['user_id']))
-            elif user['user_type'] == 'parent':
-                cursor.execute("UPDATE parents SET last_login_at = %s WHERE parent_id = %s", (datetime.utcnow(), user['user_id']))
-            
-            access_token = create_access_token(data={"sub": user['user_id'], "user_type": user['user_type'], "phone": login_data.phone})
-            return {"access_token": access_token, "token_type": "bearer"}
-
-@router.get("/auth/debug-users", tags=["Authentication"])
-async def debug_users():
-    """Debug endpoint to check existing users"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                result = {"admins": [], "parents": [], "drivers": []}
-                
-                # Check admins
-                cursor.execute("SELECT admin_id, phone, password_hash FROM admins LIMIT 5")
-                result["admins"] = [dict(row) for row in cursor.fetchall()]
-                
-                # Check parents
-                cursor.execute("SELECT parent_id, phone, password_hash FROM parents LIMIT 5")
-                result["parents"] = [dict(row) for row in cursor.fetchall()]
-                
-                # Check drivers
-                cursor.execute("SELECT driver_id, phone, password_hash FROM drivers LIMIT 5")
-                result["drivers"] = [dict(row) for row in cursor.fetchall()]
-                
-                return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/auth/profile", tags=["Authentication"])
-async def get_user_profile():
-    """Get current authenticated user's profile"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                # Try to get any admin first
-                cursor.execute("SELECT * FROM admins ORDER BY created_at DESC LIMIT 1")
-                user_data = cursor.fetchone()
-                
-                if user_data:
-                    return {
-                        "user_type": "admin",
-                        "profile": user_data
-                    }
-                
-                # If no admin, try parent
-                cursor.execute("SELECT * FROM parents ORDER BY created_at DESC LIMIT 1")
-                user_data = cursor.fetchone()
-                
-                if user_data:
-                    return {
-                        "user_type": "parent",
-                        "profile": user_data
-                    }
-                
-                # If no parent, try driver
-                cursor.execute("SELECT * FROM drivers ORDER BY created_at DESC LIMIT 1")
-                user_data = cursor.fetchone()
-                
-                if user_data:
-                    return {
-                        "user_type": "driver",
-                        "profile": user_data
-                    }
-                
-                raise HTTPException(status_code=404, detail="No users found. Please create a user first.")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-# =====================================================
-# ADMIN ROUTES
-# =====================================================
-
-@router.post("/admins", response_model=AdminResponse, status_code=status.HTTP_201_CREATED, tags=["Admins"])
-async def create_admin(admin: AdminCreate):
-    """Create a new admin (public endpoint for initial setup)"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                # Check if phone already exists
-                cursor.execute("SELECT admin_id FROM admins WHERE phone = %s", (admin.phone,))
-                if cursor.fetchone():
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Phone number already registered"
-                    )
-                
-                # Check if email already exists
-                if admin.email:
-                    cursor.execute("SELECT admin_id FROM admins WHERE email = %s", (admin.email,))
-                    if cursor.fetchone():
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Email already registered"
-                        )
-                
-                admin_id = str(uuid.uuid4())
-                
-                cursor.execute(
-                    """INSERT INTO admins (admin_id, phone, email, password_hash, name)
-                       VALUES (%s, %s, %s, %s, %s)""",
-                    (admin_id, admin.phone, admin.email, admin.password, admin.name)
-                )
-                
-                cursor.execute("SELECT admin_id, phone, email, password_hash, name, status, last_login_at, created_at, updated_at FROM admins WHERE admin_id = %s", (admin_id,))
-                return cursor.fetchone()
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/admins/profile", response_model=AdminResponse, tags=["Admins"])
-async def get_admin_profile():
-    """Get current admin's profile"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT admin_id, phone, email, password_hash, name, status, last_login_at, created_at, updated_at FROM admins ORDER BY created_at DESC LIMIT 1")
-                admin = cursor.fetchone()
-                if not admin:
-                    raise HTTPException(status_code=404, detail="No admin found. Please create an admin first.")
-                return admin
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/admins", tags=["Admins"])
-async def get_all_admins():
-    """Get all admins (admin only)"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT admin_id, phone, email, password_hash, name, status, last_login_at, created_at, updated_at FROM admins ORDER BY created_at DESC")
-                result = cursor.fetchall()
-                return [dict(admin) for admin in result] if result else []
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/admins/{admin_id}", response_model=AdminResponse, tags=["Admins"])
-async def get_admin(admin_id: str):
-    """Get admin by ID (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT admin_id, phone, email, password_hash, name, status, last_login_at, created_at, updated_at FROM admins WHERE admin_id = %s", (admin_id,))
-            admin = cursor.fetchone()
-            if not admin:
-                raise HTTPException(status_code=404, detail="Admin not found")
-            return admin
-
-@router.put("/admins/{admin_id}", response_model=AdminResponse, tags=["Admins"])
-async def update_admin(admin_id: str, admin_update: AdminUpdate):
-    """Update admin (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            # Check if admin exists
-            cursor.execute("SELECT admin_id FROM admins WHERE admin_id = %s", (admin_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Admin not found")
-            
-            update_fields = []
-            update_values = []
-            
-            for field, value in admin_update.dict(exclude_unset=True).items():
-                if value is not None:
-                    update_fields.append(f"{field} = %s")
-                    update_values.append(value)
-            
-            if update_fields:
-                update_values.append(admin_id)
-                query = f"UPDATE admins SET {', '.join(update_fields)} WHERE admin_id = %s"
-                cursor.execute(query, tuple(update_values))
-            
-            cursor.execute("SELECT admin_id, phone, email, password_hash, name, status, last_login_at, created_at, updated_at FROM admins WHERE admin_id = %s", (admin_id,))
-            return cursor.fetchone()
-
-@router.delete("/admins/{admin_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Admins"])
-async def delete_admin(admin_id: str):
-    """Delete admin (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM admins WHERE admin_id = %s", (admin_id,))
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Admin not found")
-
-# =====================================================
-# PARENT ROUTES
-# =====================================================
-
-@router.post("/parents", response_model=ParentResponse, status_code=status.HTTP_201_CREATED, tags=["Parents"])
-async def create_parent(parent: ParentCreate):
-    """Create a new parent (admin only) - Password required for login"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            # Check if phone already exists
-            cursor.execute("SELECT parent_id FROM parents WHERE phone = %s", (parent.phone,))
-            if cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Phone number already registered"
-                )
-            
-            # Check if email already exists
-            if parent.email:
-                cursor.execute("SELECT parent_id FROM parents WHERE email = %s", (parent.email,))
-                if cursor.fetchone():
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Email already registered"
-                    )
-            
-            parent_id = str(uuid.uuid4())
-            
-            cursor.execute(
-                """INSERT INTO parents (parent_id, phone, email, password_hash, name, 
-                   parent_role, door_no, street, city, district, pincode)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (parent_id, parent.phone, parent.email, parent.password, parent.name,
-                 parent.parent_role, parent.door_no, parent.street, parent.city, parent.district,
-                 parent.pincode)
-            )
-            
-            cursor.execute("SELECT parent_id, phone, email, password_hash, name, parent_role, door_no, street, city, district, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
-            return cursor.fetchone()
-
-@router.get("/parents/profile", response_model=ParentResponse, tags=["Parents"])
-async def get_parent_profile():
-    """Get current parent's profile"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT parent_id, phone, email, password_hash, name, parent_role, door_no, street, city, district, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents ORDER BY created_at DESC LIMIT 1")
-                parent = cursor.fetchone()
-                if not parent:
-                    raise HTTPException(status_code=404, detail="No parent found. Please create a parent first.")
-                return parent
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/parents", tags=["Parents"])
-async def get_all_parents():
-    """Get all parents (admin only)"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT parent_id, phone, email, password_hash, name, parent_role, door_no, street, city, district, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents ORDER BY created_at DESC")
-                result = cursor.fetchall()
-                
-                # Convert to plain dict to avoid Pydantic issues
-                parents = []
-                for parent in result:
-                    parent_dict = dict(parent)
-                    # Handle both old and new column names
-                    if 'failed_login_attempts' not in parent_dict or parent_dict['failed_login_attempts'] is None:
-                        parent_dict['failed_login_attempts'] = 0
-                    # Handle status column name change
-                    if 'status' in parent_dict:
-                        parent_dict['parents_active_status'] = parent_dict['status']
-                    elif 'parents_active_status' not in parent_dict or parent_dict['parents_active_status'] is None:
-                        parent_dict['parents_active_status'] = 'ACTIVE'
-                    parents.append(parent_dict)
-                
-                return parents
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/parents/{parent_id}", response_model=ParentResponse, tags=["Parents"])
-async def get_parent(parent_id: str):
-    """Get parent by ID (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT parent_id, phone, email, password_hash, name, parent_role, door_no, street, city, district, pincode, fcm_token, parents_active_status, last_login_at, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
-            parent = cursor.fetchone()
-            if not parent:
-                raise HTTPException(status_code=404, detail="Parent not found")
-            return parent
-
-@router.put("/parents/{parent_id}", response_model=ParentResponse, tags=["Parents"])
-async def update_parent(parent_id: str, parent_update: ParentUpdate):
-    """Update parent (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Parent not found")
-            
-            update_fields = []
-            update_values = []
-            
-            for field, value in parent_update.dict(exclude_unset=True).items():
-                if value is not None:
-                    update_fields.append(f"{field} = %s")
-                    update_values.append(value)
-            
-            if update_fields:
-                update_values.append(parent_id)
-                query = f"UPDATE parents SET {', '.join(update_fields)} WHERE parent_id = %s"
-                cursor.execute(query, tuple(update_values))
-            
-            cursor.execute("SELECT parent_id, phone, email, password_hash, name, dob, parent_role, door_no, street, city, district, state, country, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
-            return cursor.fetchone()
-
-@router.delete("/parents/{parent_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Parents"])
-async def delete_parent(parent_id: str):
-    """Delete parent (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM parents WHERE parent_id = %s", (parent_id,))
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Parent not found")
-
-# =====================================================
-# DRIVER ROUTES
-# =====================================================
-
-@router.post("/drivers", response_model=DriverResponse, status_code=status.HTTP_201_CREATED, tags=["Drivers"])
-async def create_driver(driver: DriverCreate):
-    """Create a new driver (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT driver_id FROM drivers WHERE phone = %s", (driver.phone,))
-            if cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Phone number already registered"
-                )
-            
-            driver_id = str(uuid.uuid4())
-            
-            cursor.execute(
-                """INSERT INTO drivers (driver_id, name, phone, email, password_hash, dob, licence_number, 
-                   licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (driver_id, driver.name, driver.phone, driver.email, driver.password, driver.dob,
-                 driver.licence_number, driver.licence_expiry, driver.aadhar_number,
-                 driver.licence_url, driver.aadhar_url, driver.photo_url, driver.fcm_token)
-            )
-            
-            cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, is_available, status, created_at, updated_at FROM drivers WHERE driver_id = %s", (driver_id,))
-            return cursor.fetchone()
-
-@router.get("/drivers", tags=["Drivers"])
-async def get_all_drivers(driver_id: Optional[str] = None):
-    """Get all drivers or specific driver by ID using query parameter (admin only)"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                if driver_id:
-                    cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, status, created_at, updated_at FROM drivers WHERE driver_id = %s", (driver_id,))
-                    driver = cursor.fetchone()
-                    if not driver:
-                        raise HTTPException(status_code=404, detail="Driver not found")
-                    return [dict(driver)]
-                else:
-                    cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, status, created_at, updated_at FROM drivers ORDER BY created_at DESC")
-                    result = cursor.fetchall()
-                    return [dict(driver) for driver in result] if result else []
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/drivers/available", response_model=List[DriverResponse], tags=["Drivers"])
-async def get_available_drivers():
-    """Get available drivers (admin only)"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, status, created_at, updated_at FROM drivers WHERE status = 'ACTIVE' ORDER BY name"
-                )
-                result = cursor.fetchall()
-                return result if result else []
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/drivers/{driver_id}", response_model=DriverResponse, tags=["Drivers"])
-async def get_driver(driver_id: str):
-    """Get driver by ID (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, status, created_at, updated_at FROM drivers WHERE driver_id = %s", (driver_id,))
-            driver = cursor.fetchone()
-            if not driver:
-                raise HTTPException(status_code=404, detail="Driver not found")
-            return driver
-
-@router.put("/drivers/{driver_id}", response_model=DriverResponse, tags=["Drivers"])
-async def update_driver(driver_id: str, driver_update: DriverUpdate):
-    """Update driver (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT driver_id FROM drivers WHERE driver_id = %s", (driver_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Driver not found")
-            
-            update_fields = []
-            update_values = []
-            
-            for field, value in driver_update.dict(exclude_unset=True).items():
-                if value is not None:
-                    update_fields.append(f"{field} = %s")
-                    update_values.append(value)
-            
-            if update_fields:
-                update_values.append(driver_id)
-                query = f"UPDATE drivers SET {', '.join(update_fields)} WHERE driver_id = %s"
-                cursor.execute(query, tuple(update_values))
-            
-            cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, status, created_at, updated_at FROM drivers WHERE driver_id = %s", (driver_id,))
-            return cursor.fetchone()
-
-@router.delete("/drivers/{driver_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Drivers"])
-async def delete_driver(driver_id: str):
-    """Delete driver (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM drivers WHERE driver_id = %s", (driver_id,))
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Driver not found")
-
-# =====================================================
-# CLASS ROUTES
-# =====================================================
-
-@router.post("/classes", response_model=ClassResponse, status_code=status.HTTP_201_CREATED, tags=["Classes"])
-async def create_class(class_data: ClassCreate):
-    """Create a new class (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            class_id = str(uuid.uuid4())
-            
-            cursor.execute(
-                "INSERT INTO classes (class_id, class_name, section, academic_year) VALUES (%s, %s, %s, %s)",
-                (class_id, class_data.class_name, class_data.section, class_data.academic_year)
-            )
-            
-            cursor.execute("SELECT class_id, class_name, section, academic_year, status, created_at, updated_at FROM classes WHERE class_id = %s", (class_id,))
-            return cursor.fetchone()
-
-@router.get("/classes", tags=["Classes"])
-async def get_all_classes():
-    """Get all classes (admin only)"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT class_id, class_name, section, academic_year, status, created_at, updated_at FROM classes ORDER BY class_name, section")
-                result = cursor.fetchall()
-                return [dict(class_item) for class_item in result] if result else []
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/classes/{class_id}", response_model=ClassResponse, tags=["Classes"])
-async def get_class(class_id: str):
-    """Get class by ID (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT class_id, class_name, section, academic_year, status, created_at, updated_at FROM classes WHERE class_id = %s", (class_id,))
-            class_item = cursor.fetchone()
-            if not class_item:
-                raise HTTPException(status_code=404, detail="Class not found")
-            return class_item
-
-@router.put("/classes/{class_id}", response_model=ClassResponse, tags=["Classes"])
-async def update_class(class_id: str, class_update: ClassUpdate):
-    """Update class (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT class_id FROM classes WHERE class_id = %s", (class_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Class not found")
-            
-            update_fields = []
-            update_values = []
-            
-            for field, value in class_update.dict(exclude_unset=True).items():
-                if value is not None:
-                    update_fields.append(f"{field} = %s")
-                    update_values.append(value)
-            
-            if update_fields:
-                update_values.append(class_id)
-                query = f"UPDATE classes SET {', '.join(update_fields)} WHERE class_id = %s"
-                cursor.execute(query, tuple(update_values))
-            
-            cursor.execute("SELECT class_id, class_name, section, academic_year, status, created_at, updated_at FROM classes WHERE class_id = %s", (class_id,))
-            return cursor.fetchone()
-
-@router.delete("/classes/{class_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Classes"])
-async def delete_class(class_id: str):
-    """Delete class (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM classes WHERE class_id = %s", (class_id,))
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Class not found")
-
-# =====================================================
-# ROUTE ROUTES
-# =====================================================
-
-@router.post("/routes", response_model=RouteResponse, status_code=status.HTTP_201_CREATED, tags=["Routes"])
-async def create_route(route: RouteCreate):
-    """Create a new route (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            route_id = str(uuid.uuid4())
-            
-            cursor.execute(
-                "INSERT INTO routes (route_id, name) VALUES (%s, %s)",
-                (route_id, route.name)
-            )
-            
-            cursor.execute("SELECT route_id, name, routes_active_status, created_at, updated_at FROM routes WHERE route_id = %s", (route_id,))
-            return cursor.fetchone()
-
-@router.get("/routes", tags=["Routes"])
-async def get_all_routes():
-    """Get all routes (admin only)"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT route_id, name, routes_active_status, created_at, updated_at FROM routes ORDER BY name")
-                result = cursor.fetchall()
-                return [dict(route) for route in result] if result else []
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/routes/{route_id}", response_model=RouteResponse, tags=["Routes"])
-async def get_route(route_id: str):
-    """Get route by ID (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT route_id, name, routes_active_status, created_at, updated_at FROM routes WHERE route_id = %s", (route_id,))
-            route = cursor.fetchone()
-            if not route:
-                raise HTTPException(status_code=404, detail="Route not found")
-            return route
-
-@router.put("/routes/{route_id}", response_model=RouteResponse, tags=["Routes"])
-async def update_route(route_id: str, route_update: RouteUpdate):
-    """Update route (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT route_id FROM routes WHERE route_id = %s", (route_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Route not found")
-            
-            update_fields = []
-            update_values = []
-            
-            for field, value in route_update.dict(exclude_unset=True).items():
-                if value is not None:
-                    update_fields.append(f"{field} = %s")
-                    update_values.append(value)
-            
-            if update_fields:
-                update_values.append(route_id)
-                query = f"UPDATE routes SET {', '.join(update_fields)} WHERE route_id = %s"
-                cursor.execute(query, tuple(update_values))
-            
-            cursor.execute("SELECT route_id, name, routes_active_status, created_at, updated_at FROM routes WHERE route_id = %s", (route_id,))
-            return cursor.fetchone()
-
-@router.delete("/routes/{route_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Routes"])
-async def delete_route(route_id: str):
-    """Delete route (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM routes WHERE route_id = %s", (route_id,))
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Route not found")
-
-# =====================================================
-# BUS ROUTES
-# =====================================================
-
-@router.post("/buses", response_model=BusResponse, status_code=status.HTTP_201_CREATED, tags=["Buses"])
-async def create_bus(bus: BusCreate):
-    """Create a new bus (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT bus_id FROM buses WHERE bus_number = %s", (bus.bus_number,))
-            if cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Bus number already exists"
-                )
-            
-            bus_id = str(uuid.uuid4())
-            
-            cursor.execute(
-                """INSERT INTO buses (bus_id, bus_number, driver_id, route_id, bus_type, 
-                   bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date,
-                   rc_book_url, fc_certificate_url, bus_front_url, bus_back_url, 
-                   bus_left_url, bus_right_url)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (bus_id, bus.bus_number, bus.driver_id, bus.route_id, bus.bus_type,
-                 bus.bus_brand, bus.bus_model, bus.seating_capacity, bus.rc_expiry_date,
-                 bus.fc_expiry_date, bus.rc_book_url, bus.fc_certificate_url,
-                 bus.bus_front_url, bus.bus_back_url, bus.bus_left_url, bus.bus_right_url)
-            )
-            
-            cursor.execute("SELECT bus_id, bus_number, driver_id, route_id, bus_type, bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date, rc_book_url, fc_certificate_url, bus_front_url, bus_back_url, bus_left_url, bus_right_url, status, created_at, updated_at FROM buses WHERE bus_id = %s", (bus_id,))
-            return cursor.fetchone()
-
-@router.get("/buses", tags=["Buses"])
-async def get_all_buses():
-    """Get all buses (admin only)"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT bus_id, bus_number, driver_id, route_id, bus_type, bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date, rc_book_url, fc_certificate_url, bus_front_url, bus_back_url, bus_left_url, bus_right_url, status, created_at, updated_at FROM buses ORDER BY bus_number")
-                result = cursor.fetchall()
-                return [dict(bus) for bus in result] if result else []
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/buses/{bus_id}", response_model=BusResponse, tags=["Buses"])
-async def get_bus(bus_id: str):
-    """Get bus by ID (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT bus_id, bus_number, driver_id, route_id, bus_type, bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date, rc_book_url, fc_certificate_url, bus_front_url, bus_back_url, bus_left_url, bus_right_url, status, created_at, updated_at FROM buses WHERE bus_id = %s", (bus_id,))
-            bus = cursor.fetchone()
-            if not bus:
-                raise HTTPException(status_code=404, detail="Bus not found")
-            return bus
-
-@router.put("/buses/{bus_id}", response_model=BusResponse, tags=["Buses"])
-async def update_bus(bus_id: str, bus_update: BusUpdate):
-    """Update bus (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT bus_id FROM buses WHERE bus_id = %s", (bus_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Bus not found")
-            
-            update_fields = []
-            update_values = []
-            
-            for field, value in bus_update.dict(exclude_unset=True).items():
-                if value is not None:
-                    update_fields.append(f"{field} = %s")
-                    update_values.append(value)
-            
-            if update_fields:
-                update_values.append(bus_id)
-                query = f"UPDATE buses SET {', '.join(update_fields)} WHERE bus_id = %s"
-                cursor.execute(query, tuple(update_values))
-            
-            cursor.execute("SELECT bus_id, bus_number, driver_id, route_id, bus_type, bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date, rc_book_url, fc_certificate_url, bus_front_url, bus_back_url, bus_left_url, bus_right_url, status, created_at, updated_at FROM buses WHERE bus_id = %s", (bus_id,))
-            return cursor.fetchone()
-
-@router.delete("/buses/{bus_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Buses"])
-async def delete_bus(bus_id: str):
-    """Delete bus (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM buses WHERE bus_id = %s", (bus_id,))
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Bus not found")
-
-# =====================================================
-# ROUTE STOP ROUTES
-# =====================================================
-
-@router.post("/route-stops", response_model=RouteStopResponse, status_code=status.HTTP_201_CREATED, tags=["Route Stops"])
-async def create_route_stop(stop: RouteStopCreate):
-    """Create a new route stop (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            # Verify route exists
-            cursor.execute("SELECT route_id FROM routes WHERE route_id = %s", (stop.route_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Route not found")
-            
-            stop_id = str(uuid.uuid4())
-            
-            cursor.execute(
-                """INSERT INTO route_stops (stop_id, route_id, stop_name, latitude, longitude, stop_order)
-                   VALUES (%s, %s, %s, %s, %s, %s)""",
-                (stop_id, stop.route_id, stop.stop_name, stop.latitude, stop.longitude, stop.stop_order)
-            )
-            
-            cursor.execute("SELECT stop_id, route_id, stop_name, latitude, longitude, stop_order, created_at FROM route_stops WHERE stop_id = %s", (stop_id,))
-            return cursor.fetchone()
-
-@router.get("/route-stops", tags=["Route Stops"])
-async def get_all_route_stops(route_id: Optional[str] = None):
-    """Get all route stops, optionally filtered by route (admin only)"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                if route_id:
-                    cursor.execute(
-                        "SELECT stop_id, route_id, stop_name, latitude, longitude, stop_order, created_at FROM route_stops WHERE route_id = %s ORDER BY stop_order",
-                        (route_id,)
-                    )
-                else:
-                    cursor.execute("SELECT stop_id, route_id, stop_name, latitude, longitude, stop_order, created_at FROM route_stops ORDER BY route_id, stop_order")
-                result = cursor.fetchall()
-                return [dict(stop) for stop in result] if result else []
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/route-stops/{stop_id}", response_model=RouteStopResponse, tags=["Route Stops"])
-async def get_route_stop(stop_id: str):
-    """Get route stop by ID (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT stop_id, route_id, stop_name, latitude, longitude, stop_order, created_at FROM route_stops WHERE stop_id = %s", (stop_id,))
-            stop = cursor.fetchone()
-            if not stop:
-                raise HTTPException(status_code=404, detail="Route stop not found")
-            return stop
-
-@router.put("/route-stops/{stop_id}", response_model=RouteStopResponse, tags=["Route Stops"])
-async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
-    """Update route stop (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT stop_id FROM route_stops WHERE stop_id = %s", (stop_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Route stop not found")
-            
-            update_fields = []
-            update_values = []
-            
-            for field, value in stop_update.dict(exclude_unset=True).items():
-                if value is not None:
-                    update_fields.append(f"{field} = %s")
-                    update_values.append(value)
-            
-            if update_fields:
-                update_values.append(stop_id)
-                query = f"UPDATE route_stops SET {', '.join(update_fields)} WHERE stop_id = %s"
-                cursor.execute(query, tuple(update_values))
-            
-            cursor.execute("SELECT stop_id, route_id, stop_name, latitude, longitude, stop_order, created_at FROM route_stops WHERE stop_id = %s", (stop_id,))
-            return cursor.fetchone()
-
-@router.delete("/route-stops/{stop_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Route Stops"])
-async def delete_route_stop(stop_id: str):
-    """Delete route stop (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM route_stops WHERE stop_id = %s", (stop_id,))
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Route stop not found")
-
-# =====================================================
-# STUDENT ROUTES
-# =====================================================
-
-@router.post("/students", response_model=StudentResponse, status_code=status.HTTP_201_CREATED, tags=["Students"])
-async def create_student(student: StudentCreate):
-    """Create a new student (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            # Verify parent exists
-            cursor.execute("SELECT parent_id FROM parents WHERE parent_id = %s", (student.parent_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Parent not found")
-            
-            # Verify secondary parent if provided
-            if student.s_parent_id:
-                cursor.execute("SELECT parent_id FROM parents WHERE parent_id = %s", (student.s_parent_id,))
-                if not cursor.fetchone():
-                    raise HTTPException(status_code=404, detail="Secondary parent not found")
-            
-            # Verify route exists
-            cursor.execute("SELECT route_id FROM routes WHERE route_id = %s", (student.route_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Route not found")
-            
-            # Verify stops exist and belong to the route
-            cursor.execute(
-                "SELECT stop_id FROM route_stops WHERE stop_id = %s AND route_id = %s",
-                (student.pickup_stop_id, student.route_id)
-            )
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Pickup stop not found or doesn't belong to route")
-            
-            cursor.execute(
-                "SELECT stop_id FROM route_stops WHERE stop_id = %s AND route_id = %s",
-                (student.drop_stop_id, student.route_id)
-            )
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Drop stop not found or doesn't belong to route")
-            
-            student_id = str(uuid.uuid4())
-            
-            cursor.execute(
-                """INSERT INTO students (student_id, parent_id, s_parent_id, name, dob, 
-                   class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, fcm_token)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (student_id, student.parent_id, student.s_parent_id, student.name, student.dob,
-                 student.class_section, student.route_id, student.pickup_stop_id, student.drop_stop_id,
-                 student.pickup_stop_order, student.drop_stop_order, student.emergency_contact, student.student_photo_url, student.fcm_token)
-            )
-            
-            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, fcm_token, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
-            return cursor.fetchone()
-
-@router.get("/students", tags=["Students"])
-async def get_all_students():
-    """Get all students (admin only)"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, fcm_token, student_status, transport_status, created_at, updated_at FROM students ORDER BY name")
-                result = cursor.fetchall()
-                return [dict(student) for student in result] if result else []
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/students/parent/{parent_id}", response_model=List[StudentResponse], tags=["Students"])
+@router.get("/students/by-parent/{parent_id}", response_model=List[StudentResponse], tags=["Students"])
 async def get_students_by_parent(parent_id: str):
-    """Get students by parent ID (parent can only see their own, admin can see all)"""
-    # Parents can only see their own students
-    # if current_user.user_type == "parent" and current_user.user_id != parent_id:
-    #     raise HTTPException(status_code=403, detail="Access denied")
+    """Get all students for a specific parent"""
+    query = "SELECT * FROM students WHERE parent_id = %s OR s_parent_id = %s ORDER BY name"
+    students = execute_query(query, (parent_id, parent_id), fetch_all=True)
+    return students or []
+
+@router.get("/trips/by-driver/{driver_id}", response_model=List[TripResponse], tags=["Trips"])
+async def get_trips_by_driver(driver_id: str):
+    """Get all trips for a specific driver"""
+    query = "SELECT * FROM trips WHERE driver_id = %s ORDER BY trip_date DESC"
+    trips = execute_query(query, (driver_id,), fetch_all=True)
+    return trips or []
+
+@router.get("/trips/by-route/{route_id}", response_model=List[TripResponse], tags=["Trips"])
+async def get_trips_by_route(route_id: str):
+    """Get all trips for a specific route"""
+    query = "SELECT * FROM trips WHERE route_id = %s ORDER BY trip_date DESC"
+    trips = execute_query(query, (route_id,), fetch_all=True)
+    return trips or []
+
+@router.get("/students/by-route/{route_id}", response_model=List[StudentResponse], tags=["Students"])
+async def get_students_by_route(route_id: str):
+    """Get all students using a specific route"""
+    query = """
+    SELECT * FROM students 
+    WHERE pickup_route_id = %s OR drop_route_id = %s 
+    ORDER BY name
+    """
+    students = execute_query(query, (route_id, route_id), fetch_all=True)
+    return students or []
+
+# =====================================================
+# FCM TOKEN ENDPOINTS
+# =====================================================
+
+@router.post("/fcm-tokens", response_model=FCMTokenResponse, tags=["FCM Tokens"])
+async def create_fcm_token(fcm_token: FCMTokenCreate):
+    """Create or update FCM token"""
+    try:
+        fcm_id = str(uuid.uuid4())
+        query = """
+        INSERT INTO fcm_tokens (fcm_id, fcm_token, student_id, parent_id)
+        VALUES (%s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+        student_id = VALUES(student_id),
+        parent_id = VALUES(parent_id),
+        updated_at = CURRENT_TIMESTAMP
+        """
+        execute_query(query, (fcm_id, fcm_token.fcm_token, fcm_token.student_id, fcm_token.parent_id))
+        
+        return await get_fcm_token(fcm_id)
+    except Exception as e:
+        logger.error(f"Create FCM token error: {e}")
+        raise HTTPException(status_code=400, detail="Failed to create FCM token")
+
+@router.get("/fcm-tokens", response_model=List[FCMTokenResponse], tags=["FCM Tokens"])
+async def get_all_fcm_tokens():
+    """Get all FCM tokens"""
+    query = "SELECT * FROM fcm_tokens ORDER BY created_at DESC"
+    tokens = execute_query(query, fetch_all=True)
+    return tokens or []
+
+@router.get("/fcm-tokens/{fcm_id}", response_model=FCMTokenResponse, tags=["FCM Tokens"])
+async def get_fcm_token(fcm_id: str):
+    """Get FCM token by ID"""
+    query = "SELECT * FROM fcm_tokens WHERE fcm_id = %s"
+    token = execute_query(query, (fcm_id,), fetch_one=True)
+    if not token:
+        raise HTTPException(status_code=404, detail="FCM token not found")
+    return token
+
+@router.put("/fcm-tokens/{fcm_id}", response_model=FCMTokenResponse, tags=["FCM Tokens"])
+async def update_fcm_token(fcm_id: str, fcm_update: FCMTokenUpdate):
+    """Update FCM token"""
+    update_fields = []
+    values = []
     
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                "SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, fcm_token, student_status, transport_status, created_at, updated_at FROM students WHERE parent_id = %s OR s_parent_id = %s ORDER BY name",
-                (parent_id, parent_id)
-            )
-            return cursor.fetchall()
-
-@router.get("/students/{student_id}", response_model=StudentResponse, tags=["Students"])
-async def get_student(student_id: str):
-    """Get student by ID (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, fcm_token, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
-            student = cursor.fetchone()
-            if not student:
-                raise HTTPException(status_code=404, detail="Student not found")
-            return student
-
-@router.put("/students/{student_id}", response_model=StudentResponse, tags=["Students"])
-async def update_student(student_id: str, student_update: StudentUpdate):
-    """Update student (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT student_id FROM students WHERE student_id = %s", (student_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Student not found")
-            
-            update_fields = []
-            update_values = []
-            
-            for field, value in student_update.dict(exclude_unset=True).items():
-                if value is not None:
-                    update_fields.append(f"{field} = %s")
-                    update_values.append(value)
-            
-            if update_fields:
-                update_values.append(student_id)
-                query = f"UPDATE students SET {', '.join(update_fields)} WHERE student_id = %s"
-                cursor.execute(query, tuple(update_values))
-            
-            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, fcm_token, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
-            return cursor.fetchone()
-
-@router.put("/students/{student_id}/fcm-token", tags=["Students"])
-async def update_student_fcm_token(student_id: str, fcm_data: dict):
-    """Update student FCM token"""
-    fcm_token = fcm_data.get("fcm_token")
-    if not fcm_token:
-        raise HTTPException(status_code=400, detail="FCM token is required")
+    for field, value in fcm_update.dict(exclude_unset=True).items():
+        if value is not None:
+            update_fields.append(f"{field} = %s")
+            values.append(value)
     
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT student_id FROM students WHERE student_id = %s", (student_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Student not found")
-            
-            cursor.execute(
-                "UPDATE students SET fcm_token = %s WHERE student_id = %s",
-                (fcm_token, student_id)
-            )
-            
-            cursor.execute("SELECT student_id, parent_id, s_parent_id, name, dob, class_section, route_id, pickup_stop_id, drop_stop_id, pickup_stop_order, drop_stop_order, emergency_contact, student_photo_url, fcm_token, student_status, transport_status, created_at, updated_at FROM students WHERE student_id = %s", (student_id,))
-            return cursor.fetchone()
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    values.append(fcm_id)
+    query = f"UPDATE fcm_tokens SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE fcm_id = %s"
+    
+    result = execute_query(query, tuple(values))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="FCM token not found")
+    
+    return await get_fcm_token(fcm_id)
 
-@router.delete("/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Students"])
-async def delete_student(student_id: str):
-    """Delete student (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM students WHERE student_id = %s", (student_id,))
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Student not found")
-
-@router.post("/trips", response_model=TripResponse, status_code=status.HTTP_201_CREATED, tags=["Trips"])
-async def create_trip(trip: TripCreate):
-    """Create a new trip (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            # Verify bus exists
-            cursor.execute("SELECT bus_id FROM buses WHERE bus_id = %s", (trip.bus_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Bus not found")
-            
-            # Verify driver exists
-            cursor.execute("SELECT driver_id FROM drivers WHERE driver_id = %s", (trip.driver_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Driver not found")
-            
-            # Verify route exists
-            cursor.execute("SELECT route_id FROM routes WHERE route_id = %s", (trip.route_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Route not found")
-            
-            trip_id = str(uuid.uuid4())
-            
-            cursor.execute(
-                """INSERT INTO trips (trip_id, bus_id, driver_id, route_id, trip_date, trip_type)
-                   VALUES (%s, %s, %s, %s, %s, %s)""",
-                (trip_id, trip.bus_id, trip.driver_id, trip.route_id, trip.trip_date, trip.trip_type)
-            )
-            
-            cursor.execute("SELECT trip_id, bus_id, driver_id, route_id, trip_date, trip_type, status, current_stop_order, started_at, ended_at, created_at, updated_at FROM trips WHERE trip_id = %s", (trip_id,))
-            return cursor.fetchone()
-
-@router.get("/trips", tags=["Trips"])
-async def get_all_trips(
-    route_id: Optional[str] = None,
-    trip_date: Optional[date] = None
-):
-    """Get all trips with optional filters (admin only)"""
+@router.get("/fcm-tokens/by-route/{route_id}", tags=["FCM Tokens"])
+async def get_fcm_tokens_by_route(route_id: str):
+    """Get FCM tokens for all stops in a route"""
     try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                query = "SELECT trip_id, bus_id, driver_id, route_id, trip_date, trip_type, status, current_stop_order, started_at, ended_at, created_at, updated_at FROM trips WHERE 1=1"
-                params = []
-                
-                if route_id:
-                    query += " AND route_id = %s"
-                    params.append(route_id)
-                
-                if trip_date:
-                    query += " AND trip_date = %s"
-                    params.append(trip_date)
-                
-                query += " ORDER BY trip_date DESC, trip_type"
-                
-                cursor.execute(query, tuple(params))
-                result = cursor.fetchall()
-                return [dict(trip) for trip in result] if result else []
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/trips/{trip_id}", response_model=TripResponse, tags=["Trips"])
-async def get_trip(trip_id: str):
-    """Get trip by ID (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT trip_id, bus_id, driver_id, route_id, trip_date, trip_type, status, current_stop_order, started_at, ended_at, created_at, updated_at FROM trips WHERE trip_id = %s", (trip_id,))
-            trip = cursor.fetchone()
-            if not trip:
-                raise HTTPException(status_code=404, detail="Trip not found")
-            return trip
-
-@router.put("/trips/{trip_id}", response_model=TripResponse, tags=["Trips"])
-async def update_trip(trip_id: str, trip_update: TripUpdate):
-    """Update trip (admin only)"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT trip_id FROM trips WHERE trip_id = %s", (trip_id,))
-            if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Trip not found")
-            
-            update_fields = []
-            update_values = []
-            
-            for field, value in trip_update.dict(exclude_unset=True).items():
-                if value is not None:
-                    update_fields.append(f"{field} = %s")
-                    update_values.append(value)
-            
-            if update_fields:
-                update_values.append(trip_id)
-                query = f"UPDATE trips SET {', '.join(update_fields)} WHERE trip_id = %s"
-                cursor.execute(query, tuple(update_values))
-            
-            cursor.execute("SELECT trip_id, bus_id, driver_id, route_id, trip_date, trip_type, status, current_stop_order, started_at, ended_at, created_at, updated_at FROM trips WHERE trip_id = %s", (trip_id,))
-            return cursor.fetchone()
-
-@router.post("/trips/{trip_id}/start", tags=["Trips"])
-async def start_trip(trip_id: str):
-    """Start a trip - Set current_stop_order = 0 and notify FIRST stop students"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                # Get trip details
-                cursor.execute("SELECT route_id, status FROM trips WHERE trip_id = %s", (trip_id,))
-                trip = cursor.fetchone()
-                if not trip:
-                    raise HTTPException(status_code=404, detail="Trip not found")
-                
-                if trip['status'] != 'NOT_STARTED':
-                    raise HTTPException(status_code=400, detail="Trip already started")
-                
-                # Set current_stop_order = 0 (before first stop)
-                cursor.execute(
-                    "UPDATE trips SET status = %s, current_stop_order = %s, started_at = %s WHERE trip_id = %s",
-                    ('ONGOING', 0, datetime.utcnow(), trip_id)
-                )
-                
-                # Get FIRST stop (stop_order = 1)
-                cursor.execute(
-                    "SELECT stop_id FROM route_stops WHERE route_id = %s AND stop_order = %s LIMIT 1",
-                    (trip['route_id'], 1)
-                )
-                first_stop = cursor.fetchone()
-                
-                if not first_stop:
-                    return {"message": "Trip started but no stops found", "notifications_sent": 0, "fcm_tokens": []}
-                
-                # Get students for FIRST stop only
-                cursor.execute(
-                    "SELECT fcm_token FROM students WHERE pickup_stop_id = %s AND fcm_token IS NOT NULL AND fcm_token != ''",
-                    (first_stop['stop_id'],)
-                )
-                fcm_tokens = [row['fcm_token'] for row in cursor.fetchall()]
-                
-                return {
-                    "message": "Trip started - First stop students notified",
-                    "current_stop_order": 0,
-                    "next_stop_order": 1,
-                    "notifications_sent": len(fcm_tokens),
-                    "fcm_tokens": fcm_tokens,
-                    "notification_message": "Bus is approaching your stop. Please be ready."
+        query = """
+        SELECT 
+            rs.stop_id,
+            rs.stop_name,
+            rs.pickup_stop_order,
+            rs.drop_stop_order,
+            s.student_id,
+            s.name as student_name,
+            ft.fcm_token,
+            ft.parent_id,
+            p.name as parent_name
+        FROM route_stops rs
+        LEFT JOIN students s ON (
+            (rs.stop_id = s.pickup_stop_id AND s.pickup_route_id = rs.route_id) OR
+            (rs.stop_id = s.drop_stop_id AND s.drop_route_id = rs.route_id)
+        )
+        LEFT JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
+        LEFT JOIN parents p ON ft.parent_id = p.parent_id
+        WHERE rs.route_id = %s AND s.transport_status = 'ACTIVE'
+        ORDER BY rs.pickup_stop_order, s.name
+        """
+        
+        results = execute_query(query, (route_id,), fetch_all=True)
+        
+        # Group by stops
+        stops_data = {}
+        for row in results:
+            stop_id = row['stop_id']
+            if stop_id not in stops_data:
+                stops_data[stop_id] = {
+                    "stop_id": stop_id,
+                    "stop_name": row['stop_name'],
+                    "pickup_stop_order": row['pickup_stop_order'],
+                    "drop_stop_order": row['drop_stop_order'],
+                    "students": [],
+                    "fcm_tokens": []
                 }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.post("/trips/{trip_id}/stop-reached", tags=["Trips"])
-async def stop_reached(trip_id: str):
-    """Mark stop as reached, increment current_stop_order, notify NEXT stop students"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                # Get current trip status
-                cursor.execute(
-                    "SELECT route_id, current_stop_order, status FROM trips WHERE trip_id = %s",
-                    (trip_id,)
-                )
-                trip = cursor.fetchone()
-                if not trip:
-                    raise HTTPException(status_code=404, detail="Trip not found")
-                
-                if trip['status'] != 'ONGOING':
-                    raise HTTPException(status_code=400, detail=f"Trip not in progress. Current status: {trip['status']}")
-                
-                # Increment current_stop_order
-                new_current_stop = trip['current_stop_order'] + 1
-                
-                # Update trip
-                cursor.execute(
-                    "UPDATE trips SET current_stop_order = %s WHERE trip_id = %s",
-                    (new_current_stop, trip_id)
-                )
-                
-                # Get NEXT stop (current + 1)
-                next_stop_order = new_current_stop + 1
-                cursor.execute(
-                    "SELECT stop_id, stop_name FROM route_stops WHERE route_id = %s AND stop_order = %s LIMIT 1",
-                    (trip['route_id'], next_stop_order)
-                )
-                next_stop = cursor.fetchone()
-                
-                if not next_stop:
-                    # No more stops - complete trip
-                    cursor.execute(
-                        "UPDATE trips SET status = %s, ended_at = %s WHERE trip_id = %s",
-                        ('COMPLETED', datetime.utcnow(), trip_id)
-                    )
-                    return {
-                        "message": "Trip completed - No more stops",
-                        "current_stop_order": new_current_stop,
-                        "notifications_sent": 0,
-                        "fcm_tokens": []
-                    }
-                
-                # Get students for NEXT stop ONLY
-                cursor.execute(
-                    "SELECT fcm_token FROM students WHERE pickup_stop_id = %s AND fcm_token IS NOT NULL AND fcm_token != ''",
-                    (next_stop['stop_id'],)
-                )
-                fcm_tokens = [row['fcm_token'] for row in cursor.fetchall()]
-                
-                return {
-                    "message": f"Stop reached - Next stop students notified",
-                    "current_stop_order": new_current_stop,
-                    "next_stop_order": next_stop_order,
-                    "next_stop_name": next_stop['stop_name'],
-                    "notifications_sent": len(fcm_tokens),
-                    "fcm_tokens": fcm_tokens,
-                    "notification_message": "Bus has left the previous stop and is coming to your stop."
-                }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/trips/{trip_id}/status", tags=["Trips"])
-async def get_trip_status(trip_id: str):
-    """Get trip status and current position"""
-    with get_db() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                "SELECT trip_id, route_id, status, current_stop_order, started_at, ended_at FROM trips WHERE trip_id = %s",
-                (trip_id,)
-            )
-            trip = cursor.fetchone()
-            if not trip:
-                raise HTTPException(status_code=404, detail="Trip not found")
             
-            return dict(trip)
+            if row['student_id'] and row['fcm_token']:
+                stops_data[stop_id]["students"].append({
+                    "student_id": row['student_id'],
+                    "student_name": row['student_name']
+                })
+                stops_data[stop_id]["fcm_tokens"].append({
+                    "fcm_token": row['fcm_token'],
+                    "parent_id": row['parent_id'],
+                    "parent_name": row['parent_name']
+                })
+        
+        return {
+            "route_id": route_id,
+            "stops": list(stops_data.values()),
+            "total_stops": len(stops_data),
+            "total_tokens": sum(len(stop["fcm_tokens"]) for stop in stops_data.values())
+        }
+        
+    except Exception as e:
+        logger.error(f"Get FCM tokens by route error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get FCM tokens by route")
 
-
-@router.get("/trips/{trip_id}/current-stop-students", tags=["Trips"])
-async def get_current_stop_students_endpoint(trip_id: str):
-    """Get students for current stop with FCM tokens"""
+@router.get("/fcm-tokens/by-route/{route_id}", tags=["FCM Tokens"])
+async def get_fcm_tokens_by_route(route_id: str):
+    """Get FCM tokens for all stops in a route"""
     try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                # Get trip details
-                cursor.execute(
-                    "SELECT route_id, current_stop_order, status FROM trips WHERE trip_id = %s",
-                    (trip_id,)
+        query = """
+        SELECT 
+            rs.stop_id,
+            rs.stop_name,
+            rs.pickup_stop_order,
+            rs.drop_stop_order,
+            s.student_id,
+            s.name as student_name,
+            ft.fcm_token,
+            ft.parent_id,
+            p.name as parent_name
+        FROM route_stops rs
+        LEFT JOIN students s ON (
+            (rs.stop_id = s.pickup_stop_id AND s.pickup_route_id = rs.route_id) OR
+            (rs.stop_id = s.drop_stop_id AND s.drop_route_id = rs.route_id)
+        )
+        LEFT JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
+        LEFT JOIN parents p ON ft.parent_id = p.parent_id
+        WHERE rs.route_id = %s AND s.transport_status = 'ACTIVE'
+        ORDER BY rs.pickup_stop_order, s.name
+        """
+        
+        results = execute_query(query, (route_id,), fetch_all=True)
+        
+        # Group by stops
+        stops_data = {}
+        for row in results:
+            stop_id = row['stop_id']
+            if stop_id not in stops_data:
+                stops_data[stop_id] = {
+                    "stop_id": stop_id,
+                    "stop_name": row['stop_name'],
+                    "pickup_stop_order": row['pickup_stop_order'],
+                    "drop_stop_order": row['drop_stop_order'],
+                    "students": [],
+                    "fcm_tokens": []
+                }
+            
+            if row['student_id'] and row['fcm_token']:
+                stops_data[stop_id]["students"].append({
+                    "student_id": row['student_id'],
+                    "student_name": row['student_name']
+                })
+                stops_data[stop_id]["fcm_tokens"].append({
+                    "fcm_token": row['fcm_token'],
+                    "parent_id": row['parent_id'],
+                    "parent_name": row['parent_name']
+                })
+        
+        return {
+            "route_id": route_id,
+            "stops": list(stops_data.values()),
+            "total_stops": len(stops_data),
+            "total_tokens": sum(len(stop["fcm_tokens"]) for stop in stops_data.values())
+        }
+        
+    except Exception as e:
+        logger.error(f"Get FCM tokens by route error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get FCM tokens by route")
+
+@router.delete("/fcm-tokens/{fcm_id}", tags=["FCM Tokens"])
+async def delete_fcm_token(fcm_id: str):
+    """Delete FCM token"""
+    query = "DELETE FROM fcm_tokens WHERE fcm_id = %s"
+    result = execute_query(query, (fcm_id,))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="FCM token not found")
+    return {"message": "FCM token deleted successfully"}
+    """Get FCM tokens for one specific stop"""
+    try:
+        query = """
+        SELECT 
+            rs.stop_id,
+            rs.stop_name,
+            rs.pickup_stop_order,
+            rs.drop_stop_order,
+            s.student_id,
+            s.name as student_name,
+            ft.fcm_token,
+            ft.parent_id,
+            p.name as parent_name
+        FROM route_stops rs
+        LEFT JOIN students s ON (
+            (rs.stop_id = s.pickup_stop_id) OR
+            (rs.stop_id = s.drop_stop_id)
+        )
+        LEFT JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
+        LEFT JOIN parents p ON ft.parent_id = p.parent_id
+        WHERE rs.stop_id = %s AND s.transport_status = 'ACTIVE'
+        ORDER BY s.name
+        """
+        
+        results = execute_query(query, (stop_id,), fetch_all=True)
+        
+        if not results:
+            raise HTTPException(status_code=404, detail="Stop not found")
+        
+        students = []
+        fcm_tokens = []
+        stop_info = None
+        
+        for row in results:
+            if not stop_info:
+                stop_info = {
+                    "stop_id": row['stop_id'],
+                    "stop_name": row['stop_name'],
+                    "pickup_stop_order": row['pickup_stop_order'],
+                    "drop_stop_order": row['drop_stop_order']
+                }
+            
+            if row['student_id'] and row['fcm_token']:
+                students.append({
+                    "student_id": row['student_id'],
+                    "student_name": row['student_name']
+                })
+                fcm_tokens.append({
+                    "fcm_token": row['fcm_token'],
+                    "parent_id": row['parent_id'],
+                    "parent_name": row['parent_name']
+                })
+        
+        return {
+            "stop_info": stop_info,
+            "students": students,
+            "fcm_tokens": fcm_tokens,
+            "total_students": len(students),
+            "total_tokens": len(fcm_tokens)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get FCM tokens by stop error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get FCM tokens by stop")
+
+# =====================================================
+# BUS TRACKING ENDPOINTS
+# =====================================================
+
+@router.post("/bus-tracking/location", tags=["Bus Tracking"])
+async def update_bus_location(location_data: BusLocationUpdate):
+    """Automatic bus tracking - handles stop progression and trip completion"""
+    try:
+        result = bus_tracking_service.update_bus_location(
+            trip_id=location_data.trip_id,
+            latitude=location_data.latitude,
+            longitude=location_data.longitude
+        )
+        
+        if result["success"]:
+            return result
+        else:
+            raise HTTPException(status_code=400, detail=result.get("message", "Failed to process location"))
+            
+    except Exception as e:
+        logger.error(f"Bus location processing error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process bus location")
+
+@router.post("/bus-tracking/notify", tags=["Bus Tracking"])
+async def send_custom_notification(notification: NotificationRequest):
+    """Send custom notification to parents"""
+    try:
+        # Get trip details
+        trip_query = "SELECT * FROM trips WHERE trip_id = %s"
+        trip = execute_query(trip_query, (notification.trip_id,), fetch_one=True)
+        
+        if not trip:
+            raise HTTPException(status_code=404, detail="Trip not found")
+        
+        # Get students for the route
+        if notification.stop_id:
+            students_query = """
+            SELECT s.student_id FROM students s
+            WHERE (s.pickup_stop_id = %s OR s.drop_stop_id = %s)
+            AND s.transport_status = 'ACTIVE'
+            """
+            students = execute_query(students_query, (notification.stop_id, notification.stop_id), fetch_all=True)
+        else:
+            students_query = """
+            SELECT s.student_id FROM students s
+            WHERE (s.pickup_route_id = %s OR s.drop_route_id = %s)
+            AND s.transport_status = 'ACTIVE'
+            """
+            students = execute_query(students_query, (trip['route_id'], trip['route_id']), fetch_all=True)
+        
+        if students:
+            student_ids = [s['student_id'] for s in students]
+            parent_tokens = bus_tracking_service.get_parent_tokens_for_students(student_ids)
+            
+            if parent_tokens:
+                result = fcm_service.send_notification(
+                    tokens=parent_tokens,
+                    title="Bus Notification",
+                    body=notification.message,
+                    data={"trip_id": notification.trip_id, "custom": "true"}
                 )
-                trip = cursor.fetchone()
-                if not trip:
-                    raise HTTPException(status_code=404, detail="Trip not found")
-                
-                if trip['status'] == 'NOT_STARTED':
-                    raise HTTPException(status_code=400, detail="Trip not started yet. Use /trips/{trip_id}/start first")
-                
-                if trip['status'] == 'COMPLETED':
-                    raise HTTPException(status_code=400, detail="Trip already completed")
-                
-                # Get current stop (where bus currently is)
-                cursor.execute(
-                    "SELECT stop_id, stop_name FROM route_stops WHERE route_id = %s AND stop_order = %s",
-                    (trip['route_id'], trip['current_stop_order'])
-                )
-                current_stop = cursor.fetchone()
-                
-                if not current_stop:
-                    return {
-                        "trip_status": trip['status'],
-                        "current_stop_order": trip['current_stop_order'],
-                        "message": "No current stop found",
-                        "students_count": 0,
-                        "students": []
-                    }
-                
-                # Get students with FCM tokens for current stop
-                cursor.execute(
-                    "SELECT student_id, name, fcm_token FROM students WHERE pickup_stop_id = %s AND fcm_token IS NOT NULL AND fcm_token != ''",
-                    (current_stop['stop_id'],)
-                )
-                students = cursor.fetchall()
                 
                 return {
-                    "trip_status": trip['status'],
-                    "current_stop_order": trip['current_stop_order'],
-                    "current_stop_name": current_stop['stop_name'],
+                    "success": True,
+                    "parents_notified": len(parent_tokens),
                     "students_count": len(students),
-                    "students": [dict(student) for student in students]
+                    "notification_result": result
                 }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.delete("/trips/{trip_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Trips"])
-async def delete_trip(trip_id: str):
-    """Delete trip (admin only)"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("DELETE FROM trips WHERE trip_id = %s", (trip_id,))
-                if cursor.rowcount == 0:
-                    raise HTTPException(status_code=404, detail="Trip not found")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.put("/parents/{parent_id}/fcm-token", tags=["Parents"])
-async def update_parent_fcm_token(parent_id: str, fcm_data: dict):
-    """Update parent FCM token"""
-    try:
-        fcm_token = fcm_data.get("fcm_token")
-        if not fcm_token:
-            raise HTTPException(status_code=400, detail="FCM token is required")
         
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,))
-                if not cursor.fetchone():
-                    raise HTTPException(status_code=404, detail="Parent not found")
-                
-                cursor.execute(
-                    "UPDATE parents SET fcm_token = %s WHERE parent_id = %s",
-                    (fcm_token, parent_id)
-                )
-                
-                cursor.execute("SELECT parent_id, phone, email, password_hash, name, parent_role, door_no, street, city, district, pincode, fcm_token, parents_active_status, last_login_at, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
-                return cursor.fetchone()
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.put("/parents/{parent_id}/assign-student", response_model=ParentResponse, tags=["Parents"])
-async def assign_student_to_parent(parent_id: str, student_data: dict):
-    """Assign a student to a parent"""
-    try:
-        student_id = student_data.get("student_id")
-        if not student_id:
-            raise HTTPException(status_code=400, detail="Student ID is required")
+        return {"success": False, "message": "No parents to notify"}
         
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                # Verify parent exists
-                cursor.execute("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,))
-                if not cursor.fetchone():
-                    raise HTTPException(status_code=404, detail="Parent not found")
-                
-                # Verify student exists
-                cursor.execute("SELECT student_id FROM students WHERE student_id = %s", (student_id,))
-                if not cursor.fetchone():
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Student with ID {student_id} not found"
-                    )
-                
-                # Note: Parent-student relationship is managed through students table
-                # No need to update parents table as students already reference parent_id
-                
-                cursor.execute("SELECT parent_id, phone, email, password_hash, name, dob, parent_role, door_no, street, city, district, state, country, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents WHERE parent_id = %s", (parent_id,))
-                return cursor.fetchone()
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        logger.error(f"Custom notification error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send notification")
 
-# =====================================================
-# STORED PROCEDURE ROUTES
-# =====================================================
-
-@router.get("/routes/{route_id}/stops", tags=["Route Stops"])
-async def get_route_stops_ordered(route_id: str):
-    """Get route stops in order"""
+@router.post("/bus-tracking/cache-update/{route_id}", tags=["Bus Tracking"])
+async def update_fcm_cache(route_id: str):
+    """Update FCM token cache for a route"""
     try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT stop_id, route_id, stop_name, latitude, longitude, stop_order, created_at FROM route_stops WHERE route_id = %s ORDER BY stop_order",
-                    (route_id,)
-                )
-                result = cursor.fetchall()
-                return [dict(stop) for stop in result] if result else []
+        result = bus_tracking_service.update_route_fcm_cache(route_id)
+        return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        logger.error(f"FCM cache update error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update FCM cache")
 
-@router.get("/trips/pickup-schedule", tags=["Trips"])
-async def get_all_pickup_schedule():
-    """Get all pickup schedule"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                query = """
-                SELECT 
-                    t.trip_id,
-                    t.trip_date,
-                    t.trip_type,
-                    t.status as trip_status,
-                    r.name as route_name,
-                    b.bus_number,
-                    d.name as driver_name,
-                    rs.stop_name,
-                    rs.stop_order,
-                    s.name as student_name,
-                    s.student_id
-                FROM trips t
-                JOIN routes r ON t.route_id = r.route_id
-                JOIN buses b ON t.bus_id = b.bus_id
-                JOIN drivers d ON t.driver_id = d.driver_id
-                JOIN route_stops rs ON r.route_id = rs.route_id
-                JOIN students s ON s.pickup_stop_id = rs.stop_id
-                WHERE t.trip_type = 'PICKUP'
-                ORDER BY t.trip_date DESC, rs.stop_order, s.name
-                """
-                cursor.execute(query)
-                result = cursor.fetchall()
-                return [dict(pickup) for pickup in result] if result else []
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+@router.get("/bus-tracking/cache/{route_id}", tags=["Bus Tracking"])
+async def get_fcm_cache(route_id: str):
+    """Get FCM cache for a route"""
+    query = "SELECT * FROM route_stop_fcm_cache WHERE route_id = %s"
+    cache = execute_query(query, (route_id,), fetch_one=True)
+    
+    if not cache:
+        raise HTTPException(status_code=404, detail="FCM cache not found for route")
+    
+    return {
+        "route_id": cache['route_id'],
+        "stop_fcm_map": json.loads(cache['stop_fcm_map']),
+        "updated_at": cache['updated_at']
+    }
 
-@router.get("/trips/drop-schedule", tags=["Trips"])
-async def get_all_drop_schedule():
-    """Get all drop schedule"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                query = """
-                SELECT 
-                    t.trip_id,
-                    t.trip_date,
-                    t.trip_type,
-                    t.status as trip_status,
-                    r.name as route_name,
-                    b.bus_number,
-                    d.name as driver_name,
-                    rs.stop_name,
-                    rs.stop_order,
-                    s.name as student_name,
-                    s.student_id
-                FROM trips t
-                JOIN routes r ON t.route_id = r.route_id
-                JOIN buses b ON t.bus_id = b.bus_id
-                JOIN drivers d ON t.driver_id = d.driver_id
-                JOIN route_stops rs ON r.route_id = rs.route_id
-                JOIN students s ON s.drop_stop_id = rs.stop_id
-                WHERE t.trip_type = 'DROP'
-                ORDER BY t.trip_date DESC, rs.stop_order, s.name
-                """
-                cursor.execute(query)
-                result = cursor.fetchall()
-                return [dict(drop) for drop in result] if result else []
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+@router.get("/trips/active", response_model=List[TripResponse], tags=["Trips"])
+async def get_active_trips():
+    """Get all active/ongoing trips"""
+    query = "SELECT * FROM trips WHERE status IN ('ONGOING', 'NOT_STARTED') ORDER BY trip_date DESC"
+    trips = execute_query(query, fetch_all=True)
+    return trips or []
 
-@router.get("/trips/{trip_id}/next-stop", tags=["Trips"])
-async def get_next_stop(trip_id: str):
-    """Get next stop for a trip"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                # Get current trip info
-                cursor.execute(
-                    "SELECT route_id, current_stop_order FROM trips WHERE trip_id = %s",
-                    (trip_id,)
-                )
-                trip = cursor.fetchone()
-                if not trip:
-                    raise HTTPException(status_code=404, detail="Trip not found")
-                
-                # Get next stop
-                cursor.execute(
-                    "SELECT stop_id, stop_name, stop_order FROM route_stops WHERE route_id = %s AND stop_order > %s ORDER BY stop_order LIMIT 1",
-                    (trip['route_id'], trip['current_stop_order'] or 0)
-                )
-                result = cursor.fetchone()
-                return dict(result) if result else None
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.post("/trips/{trip_id}/start", tags=["Trips"])
+@router.put("/trips/{trip_id}/start", response_model=TripResponse, tags=["Trips"])
 async def start_trip(trip_id: str):
-    """Start a trip - Set current_stop_order = 0 and notify FIRST stop students"""
+    """Driver starts trip - everything else becomes automatic"""
     try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT route_id, status FROM trips WHERE trip_id = %s", (trip_id,))
-                trip = cursor.fetchone()
-                if not trip:
-                    raise HTTPException(status_code=404, detail="Trip not found")
-                
-                if trip['status'] != 'NOT_STARTED':
-                    raise HTTPException(status_code=400, detail="Trip already started")
-                
-                cursor.execute(
-                    "UPDATE trips SET status = %s, current_stop_order = %s, started_at = %s WHERE trip_id = %s",
-                    ('ONGOING', 0, datetime.utcnow(), trip_id)
-                )
-                
-                cursor.execute(
-                    "SELECT stop_id FROM route_stops WHERE route_id = %s AND stop_order = %s LIMIT 1",
-                    (trip['route_id'], 1)
-                )
-                first_stop = cursor.fetchone()
-                
-                if not first_stop:
-                    return {"message": "Trip started but no stops found", "notifications_sent": 0, "fcm_tokens": []}
-                
-                cursor.execute(
-                    "SELECT fcm_token FROM students WHERE pickup_stop_id = %s AND fcm_token IS NOT NULL AND fcm_token != ''",
-                    (first_stop['stop_id'],)
-                )
-                fcm_tokens = [row['fcm_token'] for row in cursor.fetchall()]
-                
-                return {
-                    "message": "Trip started - First stop students notified",
-                    "current_stop_order": 0,
-                    "next_stop_order": 1,
-                    "notifications_sent": len(fcm_tokens),
-                    "fcm_tokens": fcm_tokens
-                }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.post("/trips/{trip_id}/stop-reached", tags=["Trips"])
-async def stop_reached(trip_id: str):
-    """Mark stop as reached, increment current_stop_order, notify NEXT stop students"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT route_id, current_stop_order, status FROM trips WHERE trip_id = %s",
-                    (trip_id,)
-                )
-                trip = cursor.fetchone()
-                if not trip:
-                    raise HTTPException(status_code=404, detail="Trip not found")
-                
-                if trip['status'] != 'ONGOING':
-                    raise HTTPException(status_code=400, detail=f"Trip not in progress. Current status: {trip['status']}")
-                
-                new_current_stop = trip['current_stop_order'] + 1
-                
-                cursor.execute(
-                    "UPDATE trips SET current_stop_order = %s WHERE trip_id = %s",
-                    (new_current_stop, trip_id)
-                )
-                
-                next_stop_order = new_current_stop + 1
-                cursor.execute(
-                    "SELECT stop_id, stop_name FROM route_stops WHERE route_id = %s AND stop_order = %s LIMIT 1",
-                    (trip['route_id'], next_stop_order)
-                )
-                next_stop = cursor.fetchone()
-                
-                if not next_stop:
-                    cursor.execute(
-                        "UPDATE trips SET status = %s, ended_at = %s WHERE trip_id = %s",
-                        ('COMPLETED', datetime.utcnow(), trip_id)
-                    )
-                    return {
-                        "message": "Trip completed - No more stops",
-                        "current_stop_order": new_current_stop,
-                        "notifications_sent": 0,
-                        "fcm_tokens": []
-                    }
-                
-                cursor.execute(
-                    "SELECT fcm_token FROM students WHERE pickup_stop_id = %s AND fcm_token IS NOT NULL AND fcm_token != ''",
-                    (next_stop['stop_id'],)
-                )
-                fcm_tokens = [row['fcm_token'] for row in cursor.fetchall()]
-                
-                return {
-                    "message": "Stop reached - Next stop students notified",
-                    "current_stop_order": new_current_stop,
-                    "next_stop_order": next_stop_order,
-                    "next_stop_name": next_stop['stop_name'],
-                    "notifications_sent": len(fcm_tokens),
-                    "fcm_tokens": fcm_tokens
-                }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/trips/{trip_id}/current-stop-students", tags=["Trips"])
-async def get_current_stop_students_endpoint(trip_id: str):
-    """Get students for current stop with FCM tokens"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT route_id, current_stop_order, status FROM trips WHERE trip_id = %s",
-                    (trip_id,)
-                )
-                trip = cursor.fetchone()
-                if not trip:
-                    raise HTTPException(status_code=404, detail="Trip not found")
-                
-                if trip['status'] == 'NOT_STARTED':
-                    raise HTTPException(status_code=400, detail="Trip not started yet. Use /trips/{trip_id}/start first")
-                
-                if trip['status'] == 'COMPLETED':
-                    raise HTTPException(status_code=400, detail="Trip already completed")
-                
-                cursor.execute(
-                    "SELECT stop_id, stop_name FROM route_stops WHERE route_id = %s AND stop_order = %s",
-                    (trip['route_id'], trip['current_stop_order'])
-                )
-                current_stop = cursor.fetchone()
-                
-                if not current_stop:
-                    return {
-                        "trip_status": trip['status'],
-                        "current_stop_order": trip['current_stop_order'],
-                        "message": "No current stop found",
-                        "students_count": 0,
-                        "students": []
-                    }
-                
-                cursor.execute(
-                    "SELECT student_id, name, fcm_token FROM students WHERE pickup_stop_id = %s AND fcm_token IS NOT NULL AND fcm_token != ''",
-                    (current_stop['stop_id'],)
-                )
-                students = cursor.fetchall()
-                
-                return {
-                    "trip_status": trip['status'],
-                    "current_stop_order": trip['current_stop_order'],
-                    "current_stop_name": current_stop['stop_name'],
-                    "students_count": len(students),
-                    "students": [dict(student) for student in students]
-                }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-# =====================================================
-# ERROR HANDLING ROUTES
-# =====================================================
-
-@router.post("/error-handling", response_model=ErrorHandlingResponse, status_code=status.HTTP_201_CREATED, tags=["Error Handling"])
-async def create_error_log(error: ErrorHandlingCreate):
-    """Create a new error log (admin only)"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                error_id = str(uuid.uuid4())
-                
-                cursor.execute(
-                    "INSERT INTO error_handling (error_id, error_type, error_code, error_description) VALUES (%s, %s, %s, %s)",
-                    (error_id, error.error_type, error.error_code, error.error_description)
-                )
-                
-                cursor.execute("SELECT error_id, error_type, error_code, error_description, created_at FROM error_handling WHERE error_id = %s", (error_id,))
-                return cursor.fetchone()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/error-handling", tags=["Error Handling"])
-async def get_all_error_logs():
-    """Get all error logs (admin only)"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT error_id, error_type, error_code, error_description, created_at FROM error_handling ORDER BY created_at DESC")
-                result = cursor.fetchall()
-                return [dict(error) for error in result] if result else []
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.get("/error-handling/{error_id}", response_model=ErrorHandlingResponse, tags=["Error Handling"])
-async def get_error_log(error_id: str):
-    """Get error log by ID (admin only)"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT error_id, error_type, error_code, error_description, created_at FROM error_handling WHERE error_id = %s", (error_id,))
-                error = cursor.fetchone()
-                if not error:
-                    raise HTTPException(status_code=404, detail="Error log not found")
-                return error
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.put("/error-handling/{error_id}", response_model=ErrorHandlingResponse, tags=["Error Handling"])
-async def update_error_log(error_id: str, error_update: ErrorHandlingUpdate):
-    """Update error log (admin only)"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT error_id FROM error_handling WHERE error_id = %s", (error_id,))
-                if not cursor.fetchone():
-                    raise HTTPException(status_code=404, detail="Error log not found")
-                
-                update_fields = []
-                update_values = []
-                
-                for field, value in error_update.dict(exclude_unset=True).items():
-                    if value is not None:
-                        update_fields.append(f"{field} = %s")
-                        update_values.append(value)
-                
-                if update_fields:
-                    update_values.append(error_id)
-                    query = f"UPDATE error_handling SET {', '.join(update_fields)} WHERE error_id = %s"
-                    cursor.execute(query, tuple(update_values))
-                
-                cursor.execute("SELECT error_id, error_type, error_code, error_description, created_at FROM error_handling WHERE error_id = %s", (error_id,))
-                return cursor.fetchone()
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.delete("/error-handling/{error_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Error Handling"])
-async def delete_error_log(error_id: str):
-    """Delete error log (admin only)"""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("DELETE FROM error_handling WHERE error_id = %s", (error_id,))
-                if cursor.rowcount == 0:
-                    raise HTTPException(status_code=404, detail="Error log not found")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-@router.put("/drivers/{driver_id}/fcm-token", tags=["Drivers"])
-async def update_driver_fcm_token(driver_id: str, fcm_data: dict):
-    """Update driver FCM token"""
-    try:
-        fcm_token = fcm_data.get("fcm_token")
-        if not fcm_token:
-            raise HTTPException(status_code=400, detail="FCM token is required")
+        # Update trip status to ONGOING
+        query = """
+        UPDATE trips SET 
+        status = 'ONGOING', 
+        started_at = CURRENT_TIMESTAMP,
+        current_stop_order = 0,
+        updated_at = CURRENT_TIMESTAMP 
+        WHERE trip_id = %s AND status = 'NOT_STARTED'
+        """
         
-        with get_db() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT driver_id FROM drivers WHERE driver_id = %s", (driver_id,))
-                if not cursor.fetchone():
-                    raise HTTPException(status_code=404, detail="Driver not found")
-                
-                cursor.execute(
-                    "UPDATE drivers SET fcm_token = %s WHERE driver_id = %s",
-                    (fcm_token, driver_id)
-                )
-                
-                cursor.execute("SELECT driver_id, name, phone, email, password_hash, dob, kyc_verified, licence_number, licence_expiry, aadhar_number, licence_url, aadhar_url, photo_url, fcm_token, status, created_at, updated_at FROM drivers WHERE driver_id = %s", (driver_id,))
-                return cursor.fetchone()
-    except HTTPException:
-        raise
+        result = execute_query(query, (trip_id,))
+        if result == 0:
+            raise HTTPException(status_code=404, detail="Trip not found or already started")
+        
+        return await get_trip(trip_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        logger.error(f"Start trip error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to start trip")
+

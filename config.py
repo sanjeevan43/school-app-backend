@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
     DEBUG: bool = True
     
+    # FCM Configuration
+    FCM_SERVER_KEY: str = "your-fcm-server-key"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
