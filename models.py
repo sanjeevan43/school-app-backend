@@ -56,6 +56,9 @@ class AdminUpdate(BaseModel):
 
 class AdminResponse(AdminBase):
     admin_id: str
+    phone: int = Field(..., ge=1000000000, le=9999999999)
+    email: Optional[EmailStr] = None
+    name: str = Field(..., max_length=100)
     status: UserStatus
     last_login_at: Optional[datetime] = None
     created_at: datetime
@@ -92,6 +95,15 @@ class ParentUpdate(BaseModel):
 
 class ParentResponse(ParentBase):
     parent_id: str
+    phone: int = Field(..., ge=1000000000, le=9999999999)
+    email: Optional[EmailStr] = None
+    name: str = Field(..., max_length=100)
+    parent_role: ParentRole = ParentRole.GUARDIAN
+    door_no: Optional[str] = Field(None, max_length=50)
+    street: Optional[str] = Field(None, max_length=100)
+    city: Optional[str] = Field(None, max_length=50)
+    district: Optional[str] = Field(None, max_length=50)
+    pincode: Optional[str] = Field(None, max_length=10)
     parents_active_status: UserStatus = UserStatus.ACTIVE
     last_login_at: Optional[datetime] = None
     created_at: datetime
@@ -122,6 +134,12 @@ class DriverUpdate(BaseModel):
 
 class DriverResponse(DriverBase):
     driver_id: str
+    name: str = Field(..., max_length=100)
+    phone: int = Field(..., ge=1000000000, le=9999999999)
+    email: Optional[EmailStr] = None
+    licence_number: Optional[str] = Field(None, max_length=50)
+    licence_expiry: Optional[date] = None
+    fcm_token: Optional[str] = Field(None, max_length=255)
     status: UserStatus
     created_at: datetime
     updated_at: datetime
@@ -141,6 +159,7 @@ class RouteUpdate(BaseModel):
 
 class RouteResponse(RouteBase):
     route_id: str
+    name: str = Field(..., max_length=100)
     routes_active_status: UserStatus
     created_at: datetime
     updated_at: datetime
@@ -180,6 +199,17 @@ class BusUpdate(BaseModel):
 
 class BusResponse(BusBase):
     bus_id: str
+    registration_number: str = Field(..., max_length=20)
+    driver_id: Optional[str] = None
+    route_id: Optional[str] = None
+    vehicle_type: Optional[str] = Field(None, max_length=50)
+    bus_brand: Optional[str] = Field(None, max_length=100)
+    bus_model: Optional[str] = Field(None, max_length=100)
+    seating_capacity: int = Field(..., gt=0)
+    rc_expiry_date: Optional[date] = None
+    fc_expiry_date: Optional[date] = None
+    rc_book_url: Optional[str] = Field(None, max_length=255)
+    fc_certificate_url: Optional[str] = Field(None, max_length=255)
     status: UserStatus
     created_at: datetime
     updated_at: datetime
@@ -274,6 +304,17 @@ class StudentUpdate(BaseModel):
 
 class StudentResponse(StudentBase):
     student_id: str
+    parent_id: str
+    s_parent_id: Optional[str] = None
+    name: str = Field(..., max_length=100)
+    dob: Optional[date] = None
+    class_id: Optional[str] = None
+    pickup_route_id: str
+    drop_route_id: str
+    pickup_stop_id: str
+    drop_stop_id: str
+    emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
+    student_photo_url: Optional[str] = Field(None, max_length=200)
     student_status: StudentStatus
     transport_status: TransportStatus
     created_at: datetime
@@ -382,3 +423,10 @@ class LoginRequest(BaseModel):
         if not (1000000000 <= v <= 9999999999):
             raise ValueError('Phone number must be exactly 10 digits')
         return v
+
+# Status Update Models
+class StatusUpdate(BaseModel):
+    status: UserStatus = Field(..., description="New status value")
+
+class TransportStatusUpdate(BaseModel):
+    status: TransportStatus = Field(..., description="New transport status value")

@@ -189,6 +189,15 @@ async def update_admin(admin_id: str, admin_update: AdminUpdate):
     
     return await get_admin(admin_id)
 
+@router.put("/admins/{admin_id}/status", response_model=AdminResponse, tags=["Admins"])
+async def update_admin_status(admin_id: str, status_update: StatusUpdate):
+    """Update admin status only"""
+    query = "UPDATE admins SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE admin_id = %s"
+    result = execute_query(query, (status_update.status.value, admin_id))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    return await get_admin(admin_id)
+
 @router.delete("/admins/{admin_id}", tags=["Admins"])
 async def delete_admin(admin_id: str):
     """Delete admin"""
@@ -274,6 +283,15 @@ async def update_parent(parent_id: str, parent_update: ParentUpdate):
     except Exception as e:
         logger.error(f"Update parent error: {e}")
         raise HTTPException(status_code=500, detail="Failed to update parent")
+
+@router.put("/parents/{parent_id}/status", response_model=ParentResponse, tags=["Parents"])
+async def update_parent_status(parent_id: str, status_update: StatusUpdate):
+    """Update parent status only"""
+    query = "UPDATE parents SET parents_active_status = %s, updated_at = CURRENT_TIMESTAMP WHERE parent_id = %s"
+    result = execute_query(query, (status_update.status.value, parent_id))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Parent not found")
+    return await get_parent(parent_id)
 
 @router.delete("/parents/{parent_id}", tags=["Parents"])
 async def delete_parent(parent_id: str):
@@ -362,6 +380,15 @@ async def update_driver(driver_id: str, driver_update: DriverUpdate):
     
     return await get_driver(driver_id)
 
+@router.put("/drivers/{driver_id}/status", response_model=DriverResponse, tags=["Drivers"])
+async def update_driver_status(driver_id: str, status_update: StatusUpdate):
+    """Update driver status only"""
+    query = "UPDATE drivers SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE driver_id = %s"
+    result = execute_query(query, (status_update.status.value, driver_id))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Driver not found")
+    return await get_driver(driver_id)
+
 @router.delete("/drivers/{driver_id}", tags=["Drivers"])
 async def delete_driver(driver_id: str):
     """Delete driver"""
@@ -441,6 +468,15 @@ async def update_route(route_id: str, route_update: RouteUpdate):
     except Exception as e:
         logger.error(f"Update route error: {e}")
         raise HTTPException(status_code=500, detail="Failed to update route")
+
+@router.put("/routes/{route_id}/status", response_model=RouteResponse, tags=["Routes"])
+async def update_route_status(route_id: str, status_update: StatusUpdate):
+    """Update route status only"""
+    query = "UPDATE routes SET routes_active_status = %s, updated_at = CURRENT_TIMESTAMP WHERE route_id = %s"
+    result = execute_query(query, (status_update.status.value, route_id))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Route not found")
+    return await get_route(route_id)
 
 @router.delete("/routes/{route_id}", tags=["Routes"])
 async def delete_route(route_id: str):
@@ -637,6 +673,15 @@ async def update_bus(bus_id: str, bus_update: BusUpdate):
     
     return await get_bus(bus_id)
 
+@router.put("/buses/{bus_id}/status", response_model=BusResponse, tags=["Buses"])
+async def update_bus_status(bus_id: str, status_update: StatusUpdate):
+    """Update bus status only"""
+    query = "UPDATE buses SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE bus_id = %s"
+    result = execute_query(query, (status_update.status.value, bus_id))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Bus not found")
+    return await get_bus(bus_id)
+
 @router.delete("/buses/{bus_id}", tags=["Buses"])
 async def delete_bus(bus_id: str):
     """Delete bus"""
@@ -793,6 +838,15 @@ async def update_student(student_id: str, student_update: StudentUpdate):
     except Exception as e:
         logger.error(f"Update student error: {e}")
         raise HTTPException(status_code=500, detail="Failed to update student")
+
+@router.put("/students/{student_id}/status", response_model=StudentResponse, tags=["Students"])
+async def update_student_status(student_id: str, status_update: TransportStatusUpdate):
+    """Update student transport status only"""
+    query = "UPDATE students SET transport_status = %s, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
+    result = execute_query(query, (status_update.status.value, student_id))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return await get_student(student_id)
 
 @router.delete("/students/{student_id}", tags=["Students"])
 async def delete_student(student_id: str):
