@@ -11,6 +11,7 @@ from models import *
 from auth import create_access_token
 from encryption import encrypt_data, decrypt_data
 from bus_tracking import bus_tracking_service, fcm_service
+from cascade_updates import cascade_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -238,35 +239,66 @@ async def get_parent(parent_id: str):
 
 @router.put("/parents/{parent_id}", response_model=ParentResponse, tags=["Parents"])
 async def update_parent(parent_id: str, parent_update: ParentUpdate):
-    """Update parent"""
-    update_fields = []
-    values = []
-    
-    for field, value in parent_update.dict(exclude_unset=True).items():
-        if value is not None:
-            update_fields.append(f"{field} = %s")
-            values.append(value)
-    
-    if not update_fields:
-        raise HTTPException(status_code=400, detail="No fields to update")
-    
-    values.append(parent_id)
-    query = f"UPDATE parents SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE parent_id = %s"
-    
-    result = execute_query(query, tuple(values))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Parent not found")
-    
-    return await get_parent(parent_id)
+    """Update parent with cascade updates"""
+    try:
+        # Get old data for cascade comparison
+        old_parent = execute_query("SELECT * FROM parents WHERE parent_id = %s", (parent_id,), fetch_one=True)
+        if not old_parent:
+            raise HTTPException(status_code=404, detail="Parent not found")
+        
+        update_fields = []
+        values = []
+        
+        for field, value in parent_update.dict(exclude_unset=True).items():
+            if value is not None:
+                update_fields.append(f"{field} = %s")
+                values.append(value)
+        
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        
+        values.append(parent_id)
+        query = f"UPDATE parents SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE parent_id = %s"
+        
+        result = execute_query(query, tuple(values))
+        if result == 0:
+            raise HTTPException(status_code=404, detail="Parent not found")
+        
+        # Trigger cascade updates
+        new_data = parent_update.dict(exclude_unset=True)
+        cascade_service.update_parent_cascades(parent_id, old_parent, new_data)
+        
+        return await get_parent(parent_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update parent error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update parent")
 
 @router.delete("/parents/{parent_id}", tags=["Parents"])
 async def delete_parent(parent_id: str):
-    """Delete parent"""
-    query = "DELETE FROM parents WHERE parent_id = %s"
-    result = execute_query(query, (parent_id,))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Parent not found")
-    return {"message": "Parent deleted successfully"}
+    """Delete parent with cascade cleanup"""
+    try:
+        # Get parent data for cascade cleanup
+        parent_data = execute_query("SELECT * FROM parents WHERE parent_id = %s", (parent_id,), fetch_one=True)
+        if not parent_data:
+            raise HTTPException(status_code=404, detail="Parent not found")
+        
+        # Perform cascade cleanup
+        cascade_service.delete_cascades("parents", parent_id, parent_data)
+        
+        # Delete parent
+        query = "DELETE FROM parents WHERE parent_id = %s"
+        result = execute_query(query, (parent_id,))
+        if result == 0:
+            raise HTTPException(status_code=404, detail="Parent not found")
+        
+        return {"message": "Parent deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete parent error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete parent")
 
 # =====================================================
 # DRIVER ENDPOINTS
@@ -374,35 +406,66 @@ async def get_route(route_id: str):
 
 @router.put("/routes/{route_id}", response_model=RouteResponse, tags=["Routes"])
 async def update_route(route_id: str, route_update: RouteUpdate):
-    """Update route"""
-    update_fields = []
-    values = []
-    
-    for field, value in route_update.dict(exclude_unset=True).items():
-        if value is not None:
-            update_fields.append(f"{field} = %s")
-            values.append(value)
-    
-    if not update_fields:
-        raise HTTPException(status_code=400, detail="No fields to update")
-    
-    values.append(route_id)
-    query = f"UPDATE routes SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE route_id = %s"
-    
-    result = execute_query(query, tuple(values))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Route not found")
-    
-    return await get_route(route_id)
+    """Update route with cascade updates"""
+    try:
+        # Get old data for cascade comparison
+        old_route = execute_query("SELECT * FROM routes WHERE route_id = %s", (route_id,), fetch_one=True)
+        if not old_route:
+            raise HTTPException(status_code=404, detail="Route not found")
+        
+        update_fields = []
+        values = []
+        
+        for field, value in route_update.dict(exclude_unset=True).items():
+            if value is not None:
+                update_fields.append(f"{field} = %s")
+                values.append(value)
+        
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        
+        values.append(route_id)
+        query = f"UPDATE routes SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE route_id = %s"
+        
+        result = execute_query(query, tuple(values))
+        if result == 0:
+            raise HTTPException(status_code=404, detail="Route not found")
+        
+        # Trigger cascade updates
+        new_data = route_update.dict(exclude_unset=True)
+        cascade_service.update_route_cascades(route_id, old_route, new_data)
+        
+        return await get_route(route_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update route error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update route")
 
 @router.delete("/routes/{route_id}", tags=["Routes"])
 async def delete_route(route_id: str):
-    """Delete route"""
-    query = "DELETE FROM routes WHERE route_id = %s"
-    result = execute_query(query, (route_id,))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Route not found")
-    return {"message": "Route deleted successfully"}
+    """Delete route with cascade cleanup"""
+    try:
+        # Get route data for cascade cleanup
+        route_data = execute_query("SELECT * FROM routes WHERE route_id = %s", (route_id,), fetch_one=True)
+        if not route_data:
+            raise HTTPException(status_code=404, detail="Route not found")
+        
+        # Perform cascade cleanup
+        cascade_service.delete_cascades("routes", route_id, route_data)
+        
+        # Delete route
+        query = "DELETE FROM routes WHERE route_id = %s"
+        result = execute_query(query, (route_id,))
+        if result == 0:
+            raise HTTPException(status_code=404, detail="Route not found")
+        
+        return {"message": "Route deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete route error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete route")
 
 # =====================================================
 # ROUTE STOP ENDPOINTS
@@ -449,35 +512,66 @@ async def get_route_stop(stop_id: str):
 
 @router.put("/route-stops/{stop_id}", response_model=RouteStopResponse, tags=["Route Stops"])
 async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
-    """Update route stop"""
-    update_fields = []
-    values = []
-    
-    for field, value in stop_update.dict(exclude_unset=True).items():
-        if value is not None:
-            update_fields.append(f"{field} = %s")
-            values.append(value)
-    
-    if not update_fields:
-        raise HTTPException(status_code=400, detail="No fields to update")
-    
-    values.append(stop_id)
-    query = f"UPDATE route_stops SET {', '.join(update_fields)} WHERE stop_id = %s"
-    
-    result = execute_query(query, tuple(values))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Route stop not found")
-    
-    return await get_route_stop(stop_id)
+    """Update route stop with cascade updates"""
+    try:
+        # Get old data for cascade comparison
+        old_stop = execute_query("SELECT * FROM route_stops WHERE stop_id = %s", (stop_id,), fetch_one=True)
+        if not old_stop:
+            raise HTTPException(status_code=404, detail="Route stop not found")
+        
+        update_fields = []
+        values = []
+        
+        for field, value in stop_update.dict(exclude_unset=True).items():
+            if value is not None:
+                update_fields.append(f"{field} = %s")
+                values.append(value)
+        
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        
+        values.append(stop_id)
+        query = f"UPDATE route_stops SET {', '.join(update_fields)} WHERE stop_id = %s"
+        
+        result = execute_query(query, tuple(values))
+        if result == 0:
+            raise HTTPException(status_code=404, detail="Route stop not found")
+        
+        # Trigger cascade updates
+        new_data = stop_update.dict(exclude_unset=True)
+        cascade_service.update_route_stop_cascades(stop_id, old_stop, new_data)
+        
+        return await get_route_stop(stop_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update route stop error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update route stop")
 
 @router.delete("/route-stops/{stop_id}", tags=["Route Stops"])
 async def delete_route_stop(stop_id: str):
-    """Delete route stop"""
-    query = "DELETE FROM route_stops WHERE stop_id = %s"
-    result = execute_query(query, (stop_id,))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Route stop not found")
-    return {"message": "Route stop deleted successfully"}
+    """Delete route stop with cascade cleanup"""
+    try:
+        # Get stop data for cascade cleanup
+        stop_data = execute_query("SELECT * FROM route_stops WHERE stop_id = %s", (stop_id,), fetch_one=True)
+        if not stop_data:
+            raise HTTPException(status_code=404, detail="Route stop not found")
+        
+        # Perform cascade cleanup
+        cascade_service.delete_cascades("route_stops", stop_id, stop_data)
+        
+        # Delete route stop
+        query = "DELETE FROM route_stops WHERE stop_id = %s"
+        result = execute_query(query, (stop_id,))
+        if result == 0:
+            raise HTTPException(status_code=404, detail="Route stop not found")
+        
+        return {"message": "Route stop deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete route stop error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete route stop")
 
 # =====================================================
 # BUS ENDPOINTS
@@ -664,35 +758,66 @@ async def get_student(student_id: str):
 
 @router.put("/students/{student_id}", response_model=StudentResponse, tags=["Students"])
 async def update_student(student_id: str, student_update: StudentUpdate):
-    """Update student"""
-    update_fields = []
-    values = []
-    
-    for field, value in student_update.dict(exclude_unset=True).items():
-        if value is not None:
-            update_fields.append(f"{field} = %s")
-            values.append(value)
-    
-    if not update_fields:
-        raise HTTPException(status_code=400, detail="No fields to update")
-    
-    values.append(student_id)
-    query = f"UPDATE students SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
-    
-    result = execute_query(query, tuple(values))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Student not found")
-    
-    return await get_student(student_id)
+    """Update student with cascade updates"""
+    try:
+        # Get old data for cascade comparison
+        old_student = execute_query("SELECT * FROM students WHERE student_id = %s", (student_id,), fetch_one=True)
+        if not old_student:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        update_fields = []
+        values = []
+        
+        for field, value in student_update.dict(exclude_unset=True).items():
+            if value is not None:
+                update_fields.append(f"{field} = %s")
+                values.append(value)
+        
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        
+        values.append(student_id)
+        query = f"UPDATE students SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
+        
+        result = execute_query(query, tuple(values))
+        if result == 0:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        # Trigger cascade updates
+        new_data = student_update.dict(exclude_unset=True)
+        cascade_service.update_student_cascades(student_id, old_student, new_data)
+        
+        return await get_student(student_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update student error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update student")
 
 @router.delete("/students/{student_id}", tags=["Students"])
 async def delete_student(student_id: str):
-    """Delete student"""
-    query = "DELETE FROM students WHERE student_id = %s"
-    result = execute_query(query, (student_id,))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Student not found")
-    return {"message": "Student deleted successfully"}
+    """Delete student with cascade cleanup"""
+    try:
+        # Get student data for cascade cleanup
+        student_data = execute_query("SELECT * FROM students WHERE student_id = %s", (student_id,), fetch_one=True)
+        if not student_data:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        # Perform cascade cleanup
+        cascade_service.delete_cascades("students", student_id, student_data)
+        
+        # Delete student
+        query = "DELETE FROM students WHERE student_id = %s"
+        result = execute_query(query, (student_id,))
+        if result == 0:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        return {"message": "Student deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete student error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete student")
 
 # =====================================================
 # TRIP ENDPOINTS
@@ -941,26 +1066,41 @@ async def get_fcm_token(fcm_id: str):
 
 @router.put("/fcm-tokens/{fcm_id}", response_model=FCMTokenResponse, tags=["FCM Tokens"])
 async def update_fcm_token(fcm_id: str, fcm_update: FCMTokenUpdate):
-    """Update FCM token"""
-    update_fields = []
-    values = []
-    
-    for field, value in fcm_update.dict(exclude_unset=True).items():
-        if value is not None:
-            update_fields.append(f"{field} = %s")
-            values.append(value)
-    
-    if not update_fields:
-        raise HTTPException(status_code=400, detail="No fields to update")
-    
-    values.append(fcm_id)
-    query = f"UPDATE fcm_tokens SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE fcm_id = %s"
-    
-    result = execute_query(query, tuple(values))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="FCM token not found")
-    
-    return await get_fcm_token(fcm_id)
+    """Update FCM token with cascade updates"""
+    try:
+        # Get old data for cascade comparison
+        old_token = execute_query("SELECT * FROM fcm_tokens WHERE fcm_id = %s", (fcm_id,), fetch_one=True)
+        if not old_token:
+            raise HTTPException(status_code=404, detail="FCM token not found")
+        
+        update_fields = []
+        values = []
+        
+        for field, value in fcm_update.dict(exclude_unset=True).items():
+            if value is not None:
+                update_fields.append(f"{field} = %s")
+                values.append(value)
+        
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        
+        values.append(fcm_id)
+        query = f"UPDATE fcm_tokens SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE fcm_id = %s"
+        
+        result = execute_query(query, tuple(values))
+        if result == 0:
+            raise HTTPException(status_code=404, detail="FCM token not found")
+        
+        # Trigger cascade updates
+        new_data = fcm_update.dict(exclude_unset=True)
+        cascade_service.update_fcm_token_cascades(fcm_id, old_token, new_data)
+        
+        return await get_fcm_token(fcm_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update FCM token error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update FCM token")
 
 @router.get("/fcm-tokens/by-route/{route_id}", tags=["FCM Tokens"])
 async def get_fcm_tokens_by_route(route_id: str):
@@ -1026,78 +1166,8 @@ async def get_fcm_tokens_by_route(route_id: str):
         logger.error(f"Get FCM tokens by route error: {e}")
         raise HTTPException(status_code=500, detail="Failed to get FCM tokens by route")
 
-@router.get("/fcm-tokens/by-route/{route_id}", tags=["FCM Tokens"])
-async def get_fcm_tokens_by_route(route_id: str):
-    """Get FCM tokens for all stops in a route"""
-    try:
-        query = """
-        SELECT 
-            rs.stop_id,
-            rs.stop_name,
-            rs.pickup_stop_order,
-            rs.drop_stop_order,
-            s.student_id,
-            s.name as student_name,
-            ft.fcm_token,
-            ft.parent_id,
-            p.name as parent_name
-        FROM route_stops rs
-        LEFT JOIN students s ON (
-            (rs.stop_id = s.pickup_stop_id AND s.pickup_route_id = rs.route_id) OR
-            (rs.stop_id = s.drop_stop_id AND s.drop_route_id = rs.route_id)
-        )
-        LEFT JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
-        LEFT JOIN parents p ON ft.parent_id = p.parent_id
-        WHERE rs.route_id = %s AND s.transport_status = 'ACTIVE'
-        ORDER BY rs.pickup_stop_order, s.name
-        """
-        
-        results = execute_query(query, (route_id,), fetch_all=True)
-        
-        # Group by stops
-        stops_data = {}
-        for row in results:
-            stop_id = row['stop_id']
-            if stop_id not in stops_data:
-                stops_data[stop_id] = {
-                    "stop_id": stop_id,
-                    "stop_name": row['stop_name'],
-                    "pickup_stop_order": row['pickup_stop_order'],
-                    "drop_stop_order": row['drop_stop_order'],
-                    "students": [],
-                    "fcm_tokens": []
-                }
-            
-            if row['student_id'] and row['fcm_token']:
-                stops_data[stop_id]["students"].append({
-                    "student_id": row['student_id'],
-                    "student_name": row['student_name']
-                })
-                stops_data[stop_id]["fcm_tokens"].append({
-                    "fcm_token": row['fcm_token'],
-                    "parent_id": row['parent_id'],
-                    "parent_name": row['parent_name']
-                })
-        
-        return {
-            "route_id": route_id,
-            "stops": list(stops_data.values()),
-            "total_stops": len(stops_data),
-            "total_tokens": sum(len(stop["fcm_tokens"]) for stop in stops_data.values())
-        }
-        
-    except Exception as e:
-        logger.error(f"Get FCM tokens by route error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get FCM tokens by route")
-
-@router.delete("/fcm-tokens/{fcm_id}", tags=["FCM Tokens"])
-async def delete_fcm_token(fcm_id: str):
-    """Delete FCM token"""
-    query = "DELETE FROM fcm_tokens WHERE fcm_id = %s"
-    result = execute_query(query, (fcm_id,))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="FCM token not found")
-    return {"message": "FCM token deleted successfully"}
+@router.get("/fcm-tokens/by-stop/{stop_id}", tags=["FCM Tokens"])
+async def get_fcm_tokens_by_stop(stop_id: str):
     """Get FCM tokens for one specific stop"""
     try:
         query = """
@@ -1162,6 +1232,15 @@ async def delete_fcm_token(fcm_id: str):
     except Exception as e:
         logger.error(f"Get FCM tokens by stop error: {e}")
         raise HTTPException(status_code=500, detail="Failed to get FCM tokens by stop")
+
+@router.delete("/fcm-tokens/{fcm_id}", tags=["FCM Tokens"])
+async def delete_fcm_token(fcm_id: str):
+    """Delete FCM token"""
+    query = "DELETE FROM fcm_tokens WHERE fcm_id = %s"
+    result = execute_query(query, (fcm_id,))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="FCM token not found")
+    return {"message": "FCM token deleted successfully"}
 
 # =====================================================
 # BUS TRACKING ENDPOINTS

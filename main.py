@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
@@ -59,9 +59,9 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=getattr(settings, 'ALLOWED_ORIGINS', ["http://localhost:3000", "http://localhost:8080"]),
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -94,7 +94,7 @@ async def health_check():
 
 # Global exception handler
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
+async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler for unhandled errors"""
     import traceback
     
@@ -107,7 +107,7 @@ async def global_exception_handler(request, exc):
         content={
             "detail": "Internal server error",
             "error": str(exc) if settings.DEBUG else "An error occurred",
-            "path": str(request.url.path) if hasattr(request, 'url') else "unknown"
+            "path": str(request.url.path)
         }
     )
 
