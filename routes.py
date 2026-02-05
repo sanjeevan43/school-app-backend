@@ -221,14 +221,17 @@ async def create_parent(parent: ParentCreate):
                            door_no, street, city, district, pincode)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
-        execute_query(query, (parent_id, parent.phone, parent.email, parent.password, 
-                             parent.name, parent.parent_role, parent.door_no, parent.street,
+        result = execute_query(query, (parent_id, parent.phone, parent.email, parent.password, 
+                             parent.name, parent.parent_role.value, parent.door_no, parent.street,
                              parent.city, parent.district, parent.pincode))
+        
+        if result == 0:
+            raise HTTPException(status_code=400, detail="Failed to insert parent")
         
         return await get_parent(parent_id)
     except Exception as e:
         logger.error(f"Create parent error: {e}")
-        raise HTTPException(status_code=400, detail="Failed to create parent")
+        raise HTTPException(status_code=400, detail=f"Failed to create parent: {str(e)}")
 
 @router.get("/parents", response_model=List[ParentResponse], tags=["Parents"])
 async def get_all_parents():
@@ -292,6 +295,41 @@ async def update_parent_status(parent_id: str, status_update: StatusUpdate):
     if result == 0:
         raise HTTPException(status_code=404, detail="Parent not found")
     return await get_parent(parent_id)
+
+@router.put("/parents/{parent_id}/fcm-token", tags=["Parents"])
+async def update_parent_fcm_token(parent_id: str, fcm_data: dict):
+    """Update FCM token for parent when they login"""
+    try:
+        fcm_token = fcm_data.get("fcm_token")
+        if not fcm_token:
+            raise HTTPException(status_code=400, detail="fcm_token is required")
+        
+        # Check if parent exists
+        parent = execute_query("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,), fetch_one=True)
+        if not parent:
+            raise HTTPException(status_code=404, detail="Parent not found")
+        
+        # Update or insert FCM token
+        query = """
+        INSERT INTO fcm_tokens (fcm_id, fcm_token, parent_id) 
+        VALUES (%s, %s, %s)
+        ON DUPLICATE KEY UPDATE 
+        fcm_token = VALUES(fcm_token),
+        updated_at = CURRENT_TIMESTAMP
+        """
+        fcm_id = str(uuid.uuid4())
+        execute_query(query, (fcm_id, fcm_token, parent_id))
+        
+        return {
+            "message": "FCM token updated successfully",
+            "parent_id": parent_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update parent FCM token error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update FCM token")
 
 @router.delete("/parents/{parent_id}", tags=["Parents"])
 async def delete_parent(parent_id: str):
@@ -751,6 +789,15 @@ async def update_class(class_id: str, class_update: ClassUpdate):
     
     return await get_class(class_id)
 
+@router.put("/classes/{class_id}/status", response_model=ClassResponse, tags=["Classes"])
+async def update_class_status(class_id: str, status_update: StatusUpdate):
+    """Update class status only"""
+    query = "UPDATE classes SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE class_id = %s"
+    result = execute_query(query, (status_update.status.value, class_id))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Class not found")
+    return await get_class(class_id)
+
 @router.delete("/classes/{class_id}", tags=["Classes"])
 async def delete_class(class_id: str):
     """Delete class"""
@@ -931,6 +978,15 @@ async def update_trip(trip_id: str, trip_update: TripUpdate):
     if result == 0:
         raise HTTPException(status_code=404, detail="Trip not found")
     
+    return await get_trip(trip_id)
+
+@router.put("/trips/{trip_id}/status", response_model=TripResponse, tags=["Trips"])
+async def update_trip_status(trip_id: str, status_update: TripStatusUpdate):
+    """Update trip status only"""
+    query = "UPDATE trips SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s"
+    result = execute_query(query, (status_update.status.value, trip_id))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Trip not found")
     return await get_trip(trip_id)
 
 @router.delete("/trips/{trip_id}", tags=["Trips"])

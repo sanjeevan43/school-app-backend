@@ -54,7 +54,7 @@ class AdminUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
     status: Optional[UserStatus] = None
 
-class AdminResponse(AdminBase):
+class AdminResponse(BaseModel):
     admin_id: str
     phone: int = Field(..., ge=1000000000, le=9999999999)
     email: Optional[EmailStr] = None
@@ -93,7 +93,7 @@ class ParentUpdate(BaseModel):
     pincode: Optional[str] = Field(None, max_length=10)
     parents_active_status: Optional[UserStatus] = None
 
-class ParentResponse(ParentBase):
+class ParentResponse(BaseModel):
     parent_id: str
     phone: int = Field(..., ge=1000000000, le=9999999999)
     email: Optional[EmailStr] = None
@@ -132,7 +132,7 @@ class DriverUpdate(BaseModel):
     fcm_token: Optional[str] = Field(None, max_length=255)
     status: Optional[UserStatus] = None
 
-class DriverResponse(DriverBase):
+class DriverResponse(BaseModel):
     driver_id: str
     name: str = Field(..., max_length=100)
     phone: int = Field(..., ge=1000000000, le=9999999999)
@@ -157,7 +157,7 @@ class RouteUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
     routes_active_status: Optional[UserStatus] = None
 
-class RouteResponse(RouteBase):
+class RouteResponse(BaseModel):
     route_id: str
     name: str = Field(..., max_length=100)
     routes_active_status: UserStatus
@@ -197,7 +197,7 @@ class BusUpdate(BaseModel):
     fc_certificate_url: Optional[str] = Field(None, max_length=255)
     status: Optional[UserStatus] = None
 
-class BusResponse(BusBase):
+class BusResponse(BaseModel):
     bus_id: str
     registration_number: str = Field(..., max_length=20)
     driver_id: Optional[str] = None
@@ -231,8 +231,11 @@ class ClassUpdate(BaseModel):
     academic_year: Optional[str] = Field(None, max_length=20)
     status: Optional[UserStatus] = None
 
-class ClassResponse(ClassBase):
+class ClassResponse(BaseModel):
     class_id: str
+    class_name: str = Field(..., max_length=20)
+    section: str = Field(..., max_length=10)
+    academic_year: str = Field(..., max_length=20)
     status: UserStatus
     created_at: datetime
     updated_at: datetime
@@ -258,8 +261,14 @@ class RouteStopUpdate(BaseModel):
     pickup_stop_order: Optional[int] = None
     drop_stop_order: Optional[int] = None
 
-class RouteStopResponse(RouteStopBase):
+class RouteStopResponse(BaseModel):
     stop_id: str
+    route_id: str
+    stop_name: str = Field(..., max_length=100)
+    latitude: Optional[float] = Field(None, ge=-90, le=90)
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
+    pickup_stop_order: int
+    drop_stop_order: int
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -302,7 +311,7 @@ class StudentUpdate(BaseModel):
     student_status: Optional[StudentStatus] = None
     transport_status: Optional[TransportStatus] = None
 
-class StudentResponse(StudentBase):
+class StudentResponse(BaseModel):
     student_id: str
     parent_id: str
     s_parent_id: Optional[str] = None
@@ -339,8 +348,13 @@ class TripUpdate(BaseModel):
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
 
-class TripResponse(TripBase):
+class TripResponse(BaseModel):
     trip_id: str
+    bus_id: str
+    driver_id: str
+    route_id: str
+    trip_date: date
+    trip_type: TripType
     status: TripStatus
     current_stop_order: int
     started_at: Optional[datetime] = None
@@ -374,8 +388,11 @@ class ErrorHandlingUpdate(BaseModel):
     error_code: Optional[int] = None
     error_description: Optional[str] = Field(None, max_length=255)
 
-class ErrorHandlingResponse(ErrorHandlingBase):
+class ErrorHandlingResponse(BaseModel):
     error_id: str
+    error_type: Optional[str] = Field(None, max_length=50)
+    error_code: Optional[int] = None
+    error_description: Optional[str] = Field(None, max_length=255)
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -394,8 +411,11 @@ class FCMTokenUpdate(BaseModel):
     student_id: Optional[str] = None
     parent_id: Optional[str] = None
 
-class FCMTokenResponse(FCMTokenBase):
+class FCMTokenResponse(BaseModel):
     fcm_id: str
+    fcm_token: str = Field(..., max_length=255)
+    student_id: Optional[str] = None
+    parent_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     
@@ -430,3 +450,6 @@ class StatusUpdate(BaseModel):
 
 class TransportStatusUpdate(BaseModel):
     status: TransportStatus = Field(..., description="New transport status value")
+
+class TripStatusUpdate(BaseModel):
+    status: TripStatus = Field(..., description="New trip status value")
