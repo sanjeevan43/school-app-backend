@@ -331,6 +331,54 @@ async def update_parent_fcm_token(parent_id: str, fcm_data: dict):
         logger.error(f"Update parent FCM token error: {e}")
         raise HTTPException(status_code=500, detail="Failed to update FCM token")
 
+@router.patch("/parents/{parent_id}/fcm-token", tags=["Parents"])
+async def patch_parent_fcm_token(parent_id: str, fcm_data: dict):
+    """PATCH: Update parent FCM token"""
+    try:
+        fcm_token = fcm_data.get("fcm_token")
+        if not fcm_token:
+            raise HTTPException(status_code=400, detail="fcm_token is required")
+        
+        # Check if parent exists
+        parent = execute_query("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,), fetch_one=True)
+        if not parent:
+            raise HTTPException(status_code=404, detail="Parent not found")
+        
+        # Update or insert FCM token
+        query = """
+        INSERT INTO fcm_tokens (fcm_id, fcm_token, parent_id) 
+        VALUES (%s, %s, %s)
+        ON DUPLICATE KEY UPDATE 
+        fcm_token = VALUES(fcm_token),
+        updated_at = CURRENT_TIMESTAMP
+        """
+        fcm_id = str(uuid.uuid4())
+        execute_query(query, (fcm_id, fcm_token, parent_id))
+        
+        return {
+            "message": "FCM token updated successfully",
+            "parent_id": parent_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update parent FCM token error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update FCM token")
+
+@router.get("/parents/fcm-tokens/all", tags=["Parents"])
+async def get_all_parent_fcm_tokens():
+    """GET: Retrieve all parent FCM tokens"""
+    query = """
+    SELECT p.parent_id, p.name, p.phone, f.fcm_token, p.parents_active_status 
+    FROM parents p
+    INNER JOIN fcm_tokens f ON p.parent_id = f.parent_id
+    WHERE p.parents_active_status = 'ACTIVE' AND f.fcm_token IS NOT NULL
+    ORDER BY p.name
+    """
+    parents = execute_query(query, fetch_all=True)
+    return {"parents": parents or [], "count": len(parents) if parents else 0}
+
 @router.delete("/parents/{parent_id}", tags=["Parents"])
 async def delete_parent(parent_id: str):
     """Delete parent with cascade cleanup"""
@@ -426,6 +474,31 @@ async def update_driver_status(driver_id: str, status_update: StatusUpdate):
     if result == 0:
         raise HTTPException(status_code=404, detail="Driver not found")
     return await get_driver(driver_id)
+
+@router.patch("/drivers/{driver_id}/fcm-token", response_model=DriverResponse, tags=["Drivers"])
+async def patch_driver_fcm_token(driver_id: str, fcm_data: dict):
+    """PATCH: Update driver FCM token"""
+    fcm_token = fcm_data.get("fcm_token")
+    if not fcm_token:
+        raise HTTPException(status_code=400, detail="fcm_token is required")
+    
+    query = "UPDATE drivers SET fcm_token = %s, updated_at = CURRENT_TIMESTAMP WHERE driver_id = %s"
+    result = execute_query(query, (fcm_token, driver_id))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Driver not found")
+    return await get_driver(driver_id)
+
+@router.get("/drivers/fcm-tokens/all", tags=["Drivers"])
+async def get_all_driver_fcm_tokens():
+    """GET: Retrieve all driver FCM tokens"""
+    query = """
+    SELECT driver_id, name, phone, fcm_token, status 
+    FROM drivers 
+    WHERE fcm_token IS NOT NULL AND fcm_token != '' AND status = 'ACTIVE'
+    ORDER BY name
+    """
+    drivers = execute_query(query, fetch_all=True)
+    return {"drivers": drivers or [], "count": len(drivers) if drivers else 0}
 
 @router.delete("/drivers/{driver_id}", tags=["Drivers"])
 async def delete_driver(driver_id: str):
@@ -720,6 +793,53 @@ async def update_bus_status(bus_id: str, status_update: StatusUpdate):
         raise HTTPException(status_code=404, detail="Bus not found")
     return await get_bus(bus_id)
 
+@router.patch("/buses/{bus_id}/status", response_model=BusResponse, tags=["Buses"])
+async def patch_bus_status(bus_id: str, status_update: StatusUpdate):
+    """PATCH: Update bus status only"""
+    query = "UPDATE buses SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE bus_id = %s"
+    result = execute_query(query, (status_update.status.value, bus_id))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Bus not found")
+    return await get_bus(bus_id)
+
+@router.patch("/buses/{bus_id}/route", response_model=BusResponse, tags=["Buses"])
+async def patch_bus_route(bus_id: str, route_data: dict):
+    """PATCH: Assign route to bus"""
+    route_id = route_data.get("route_id")
+    if not route_id:
+        raise HTTPException(status_code=400, detail="route_id is required")
+    
+    query = "UPDATE buses SET route_id = %s, updated_at = CURRENT_TIMESTAMP WHERE bus_id = %s"
+    result = execute_query(query, (route_id, bus_id))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Bus not found")
+    return await get_bus(bus_id)
+
+@router.patch("/buses/{bus_id}/documents", response_model=BusResponse, tags=["Buses"])
+async def patch_bus_documents(bus_id: str, documents: dict):
+    """PATCH: Update bus document URLs (rc_book_url, fc_certificate_url)"""
+    update_fields = []
+    values = []
+    
+    if "rc_book_url" in documents and documents["rc_book_url"]:
+        update_fields.append("rc_book_url = %s")
+        values.append(documents["rc_book_url"])
+    
+    if "fc_certificate_url" in documents and documents["fc_certificate_url"]:
+        update_fields.append("fc_certificate_url = %s")
+        values.append(documents["fc_certificate_url"])
+    
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No document URLs provided")
+    
+    values.append(bus_id)
+    query = f"UPDATE buses SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE bus_id = %s"
+    
+    result = execute_query(query, tuple(values))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Bus not found")
+    return await get_bus(bus_id)
+
 @router.delete("/buses/{bus_id}", tags=["Buses"])
 async def delete_bus(bus_id: str):
     """Delete bus"""
@@ -891,6 +1011,24 @@ async def update_student_status(student_id: str, status_update: TransportStatusU
     """Update student transport status only"""
     query = "UPDATE students SET transport_status = %s, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
     result = execute_query(query, (status_update.status.value, student_id))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return await get_student(student_id)
+
+@router.patch("/students/{student_id}/secondary-parent", response_model=StudentResponse, tags=["Students"])
+async def patch_student_secondary_parent(student_id: str, parent_data: dict):
+    """PATCH: Assign secondary parent to student"""
+    s_parent_id = parent_data.get("s_parent_id")
+    if not s_parent_id:
+        raise HTTPException(status_code=400, detail="s_parent_id is required")
+    
+    # Verify parent exists
+    parent_check = execute_query("SELECT parent_id FROM parents WHERE parent_id = %s", (s_parent_id,), fetch_one=True)
+    if not parent_check:
+        raise HTTPException(status_code=404, detail="Parent not found")
+    
+    query = "UPDATE students SET s_parent_id = %s, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
+    result = execute_query(query, (s_parent_id, student_id))
     if result == 0:
         raise HTTPException(status_code=404, detail="Student not found")
     return await get_student(student_id)
