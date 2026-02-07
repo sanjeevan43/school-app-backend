@@ -311,13 +311,21 @@ Authorization: Bearer <your_token_here>
 
 **Transport Status Options**: `ACTIVE`, `TEMP_STOP`, `CANCELLED`
 
-### 6. Assign Secondary Parent (PATCH)
+### 6. Assign/Unassign Secondary Parent (PATCH)
 **Endpoint**: `PATCH /students/{student_id}/secondary-parent`
+
+**Description**: Assign a secondary parent to a student. Pass `null` to unassign.
 
 **Request Body**:
 ```json
 {
   "s_parent_id": "secondary_parent_uuid"
+}
+```
+OR
+```json
+{
+  "s_parent_id": null
 }
 ```
 

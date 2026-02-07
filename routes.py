@@ -998,9 +998,8 @@ async def update_student(student_id: str, student_update: StudentUpdate):
         values = []
         
         for field, value in student_update.dict(exclude_unset=True).items():
-            if value is not None:
-                update_fields.append(f"{field} = %s")
-                values.append(value)
+            update_fields.append(f"{field} = %s")
+            values.append(value)
         
         if not update_fields:
             raise HTTPException(status_code=400, detail="No fields to update")
@@ -1033,16 +1032,15 @@ async def update_student_status(student_id: str, status_update: TransportStatusU
     return await get_student(student_id)
 
 @router.patch("/students/{student_id}/secondary-parent", response_model=StudentResponse, tags=["Students"])
-async def patch_student_secondary_parent(student_id: str, parent_data: dict):
-    """PATCH: Assign secondary parent to student"""
-    s_parent_id = parent_data.get("s_parent_id")
-    if not s_parent_id:
-        raise HTTPException(status_code=400, detail="s_parent_id is required")
+async def patch_student_secondary_parent(student_id: str, parent_data: SecondaryParentUpdate):
+    """PATCH: Assign secondary parent to student. Set to null to unassign."""
+    s_parent_id = parent_data.s_parent_id
     
-    # Verify parent exists
-    parent_check = execute_query("SELECT parent_id FROM parents WHERE parent_id = %s", (s_parent_id,), fetch_one=True)
-    if not parent_check:
-        raise HTTPException(status_code=404, detail="Parent not found")
+    if s_parent_id:
+        # Verify parent exists
+        parent_check = execute_query("SELECT parent_id FROM parents WHERE parent_id = %s", (s_parent_id,), fetch_one=True)
+        if not parent_check:
+            raise HTTPException(status_code=404, detail="Parent not found")
     
     query = "UPDATE students SET s_parent_id = %s, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
     result = execute_query(query, (s_parent_id, student_id))

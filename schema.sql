@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS classes (
 CREATE TABLE IF NOT EXISTS students (
     student_id VARCHAR(36) PRIMARY KEY,
     parent_id VARCHAR(36) NOT NULL,
-    s_parent_id VARCHAR(36),
+    s_parent_id CHAR(36) DEFAULT NULL,
     name VARCHAR(100) NOT NULL,
     dob DATE,
     class_id VARCHAR(36),

@@ -101,6 +101,22 @@
 **Endpoint**: `PUT /students/{student_id}/status`
 **Transport Status Options**: `ACTIVE`, `TEMP_STOP`, `CANCELLED`
 
+### 3. Assign/Unassign Secondary Parent
+**Endpoint**: `PATCH /students/{student_id}/secondary-parent`
+**Description**: Link a second parent to a student (e.g. mother and father). Pass `null` for `s_parent_id` to unassign.
+**Request Body**:
+```json
+{
+  "s_parent_id": "parent_uuid"
+}
+```
+OR
+```json
+{
+  "s_parent_id": null
+}
+```
+
 ---
 
 ## 🗓️ Trip APIs
@@ -135,6 +151,14 @@
 |--------|------|-------------|
 | bus_id | VARCHAR(36) | Primary Key |
 | status | VARCHAR(20) | ACTIVE, INACTIVE, MAINTENANCE |
+
+### 4. Students Table
+| Column | Type | Description |
+|--------|------|-------------|
+| student_id | VARCHAR(36) | Primary Key |
+| parent_id | VARCHAR(36) | Foreign Key (Primary Parent) |
+| s_parent_id | CHAR(36) | Secondary Parent (Nullable, Default NULL) |
+| name | VARCHAR(100) | Student Name |
 
 ---
 

@@ -315,6 +315,9 @@ class StudentUpdate(BaseModel):
     student_status: Optional[StudentStatus] = None
     transport_status: Optional[TransportStatus] = None
 
+class SecondaryParentUpdate(BaseModel):
+    s_parent_id: Optional[str] = Field(None, description="Secondary Parent ID (UUID)")
+
 class StudentResponse(BaseModel):
     student_id: str
     parent_id: str
