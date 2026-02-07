@@ -1142,6 +1142,15 @@ async def update_trip_status(trip_id: str, status_update: TripStatusUpdate):
         raise HTTPException(status_code=404, detail="Trip not found")
     return await get_trip(trip_id)
 
+@router.patch("/trips/{trip_id}/status", response_model=TripResponse, tags=["Trips"])
+async def patch_trip_status(trip_id: str, status_update: TripStatusUpdate):
+    """PATCH: Update trip status only"""
+    query = "UPDATE trips SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s"
+    result = execute_query(query, (status_update.status.value, trip_id))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    return await get_trip(trip_id)
+
 @router.delete("/trips/{trip_id}", tags=["Trips"])
 async def delete_trip(trip_id: str):
     """Delete trip"""

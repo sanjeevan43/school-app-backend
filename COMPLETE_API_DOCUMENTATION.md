@@ -125,8 +125,12 @@ OR
 **Endpoint**: `POST /trips`
 **Trip Type**: `MORNING`, `EVENING`
 
-### 2. Update Trip Status
+### 2. Update Trip Status (PUT)
 **Endpoint**: `PUT /trips/{trip_id}/status`
+**Trip Status Options**: `NOT_STARTED`, `ONGOING`, `PAUSED`, `COMPLETED`, `CANCELED`
+
+### 3. Update Trip Status (PATCH)
+**Endpoint**: `PATCH /trips/{trip_id}/status`
 **Trip Status Options**: `NOT_STARTED`, `ONGOING`, `PAUSED`, `COMPLETED`, `CANCELED`
 
 ---

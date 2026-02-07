@@ -570,7 +570,7 @@ OR
 
 **Trip Status Options**: `NOT_STARTED`, `ONGOING`, `PAUSED`, `COMPLETED`, `CANCELED`
 
-### 5. Update Trip Status
+### 5. Update Trip Status (PUT)
 **Endpoint**: `PUT /trips/{trip_id}/status`
 
 **Request Body**:
@@ -580,7 +580,19 @@ OR
 }
 ```
 
-### 6. Delete Trip
+### 6. Update Trip Status (PATCH)
+**Endpoint**: `PATCH /trips/{trip_id}/status`
+
+**Request Body**:
+```json
+{
+  "status": "COMPLETED"
+}
+```
+
+**Trip Status Options**: `NOT_STARTED`, `ONGOING`, `PAUSED`, `COMPLETED`, `CANCELED`
+
+### 7. Delete Trip
 **Endpoint**: `DELETE /trips/{trip_id}`
 
 ---
