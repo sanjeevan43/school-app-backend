@@ -13,17 +13,6 @@ logging.basicConfig(level=logging.INFO)
 # FastAPI app
 app = FastAPI(
     title="School Transport Management API",
-    description="""
-    Complete API for managing school transport operations.
-    
-    ### Authentication
-    Use phone number + password to login. All endpoints require JWT Bearer token.
-    
-    ### Quick Start
-    1. Create Admin: `POST /api/v1/admins`
-    2. Login: `POST /api/v1/auth/login`
-    3. Use the token in Authorization header: `Bearer <token>`
-    """,
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -33,9 +22,9 @@ app = FastAPI(
         {"name": "Parents", "description": "Parent/guardian management"},
         {"name": "Drivers", "description": "Bus driver management"},
         {"name": "Students", "description": "Student transport management"},
+        {"name": "Buses", "description": "School bus management"},
         {"name": "Routes", "description": "Bus route management"},
         {"name": "Route Stops", "description": "Bus stop management"},
-        {"name": "Buses", "description": "School bus management"},
         {"name": "Classes", "description": "School class management"},
         {"name": "Trips", "description": "Daily bus trip management"},
         {"name": "Bus Tracking", "description": "Real-time bus tracking"},
