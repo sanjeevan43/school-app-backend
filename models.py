@@ -8,6 +8,16 @@ class UserStatus(str, Enum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"
 
+class DriverStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    SUSPENDED = "SUSPENDED"
+
+class BusStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    MAINTENANCE = "MAINTENANCE"
+
 class UserType(str, Enum):
     ADMIN = "admin"
     PARENT = "parent"
@@ -130,7 +140,7 @@ class DriverUpdate(BaseModel):
     licence_number: Optional[str] = Field(None, max_length=50)
     licence_expiry: Optional[date] = None
     fcm_token: Optional[str] = Field(None, max_length=255)
-    status: Optional[UserStatus] = None
+    status: Optional[DriverStatus] = None
 
 class DriverResponse(BaseModel):
     driver_id: str
@@ -140,7 +150,7 @@ class DriverResponse(BaseModel):
     licence_number: Optional[str] = Field(None, max_length=50)
     licence_expiry: Optional[date] = None
     fcm_token: Optional[str] = Field(None, max_length=255)
-    status: UserStatus
+    status: DriverStatus
     created_at: datetime
     updated_at: datetime
 
@@ -195,7 +205,7 @@ class BusUpdate(BaseModel):
     fc_expiry_date: Optional[date] = None
     rc_book_url: Optional[str] = Field(None, max_length=255)
     fc_certificate_url: Optional[str] = Field(None, max_length=255)
-    status: Optional[UserStatus] = None
+    status: Optional[BusStatus] = None
 
 class BusResponse(BaseModel):
     bus_id: str
@@ -210,7 +220,7 @@ class BusResponse(BaseModel):
     fc_expiry_date: Optional[date] = None
     rc_book_url: Optional[str] = Field(None, max_length=255)
     fc_certificate_url: Optional[str] = Field(None, max_length=255)
-    status: UserStatus
+    status: BusStatus
     created_at: datetime
     updated_at: datetime
 
@@ -286,12 +296,6 @@ class StudentBase(BaseModel):
     drop_stop_id: str
     emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
     student_photo_url: Optional[str] = Field(None, max_length=200)
-
-    @validator('drop_stop_id')
-    def stops_different(cls, v, values):
-        if v and 'pickup_stop_id' in values and v == values['pickup_stop_id']:
-            raise ValueError('Pickup and drop stops must be different')
-        return v
 
 class StudentCreate(StudentBase):
     pass
@@ -447,6 +451,12 @@ class LoginRequest(BaseModel):
 # Status Update Models
 class StatusUpdate(BaseModel):
     status: UserStatus = Field(..., description="New status value")
+
+class DriverStatusUpdate(BaseModel):
+    status: DriverStatus = Field(..., description="New driver status value (ACTIVE, INACTIVE, SUSPENDED)")
+
+class BusStatusUpdate(BaseModel):
+    status: BusStatus = Field(..., description="New bus status value (ACTIVE, INACTIVE, MAINTENANCE)")
 
 class TransportStatusUpdate(BaseModel):
     status: TransportStatus = Field(..., description="New transport status value")

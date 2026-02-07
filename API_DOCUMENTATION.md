@@ -230,6 +230,8 @@ Authorization: Bearer <your_token_here>
 }
 ```
 
+**Available Status Values**: `ACTIVE`, `INACTIVE`, `SUSPENDED`
+
 ### 6. Update Driver FCM Token (PATCH)
 **Endpoint**: `PATCH /drivers/{driver_id}/fcm-token`
 
@@ -268,6 +270,8 @@ Authorization: Bearer <your_token_here>
 
 ### 1. Create Student
 **Endpoint**: `POST /students`
+
+**Description**: Create a new student. Provides specific error messages for invalid references (Parent, Route, Stop, etc.).
 
 **Request Body**:
 ```json
@@ -372,6 +376,8 @@ Authorization: Bearer <your_token_here>
   "status": "INACTIVE"
 }
 ```
+
+**Available Status Values**: `ACTIVE`, `INACTIVE`, `MAINTENANCE`
 
 ### 7. Assign Route to Bus (PATCH)
 **Endpoint**: `PATCH /buses/{bus_id}/route`

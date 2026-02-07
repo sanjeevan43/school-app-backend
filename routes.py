@@ -467,8 +467,8 @@ async def update_driver(driver_id: str, driver_update: DriverUpdate):
     return await get_driver(driver_id)
 
 @router.put("/drivers/{driver_id}/status", response_model=DriverResponse, tags=["Drivers"])
-async def update_driver_status(driver_id: str, status_update: StatusUpdate):
-    """Update driver status only"""
+async def update_driver_status(driver_id: str, status_update: DriverStatusUpdate):
+    """Update driver status only (ACTIVE, INACTIVE, SUSPENDED)"""
     query = "UPDATE drivers SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE driver_id = %s"
     result = execute_query(query, (status_update.status.value, driver_id))
     if result == 0:
@@ -785,8 +785,8 @@ async def update_bus(bus_id: str, bus_update: BusUpdate):
     return await get_bus(bus_id)
 
 @router.put("/buses/{bus_id}/status", response_model=BusResponse, tags=["Buses"])
-async def update_bus_status(bus_id: str, status_update: StatusUpdate):
-    """Update bus status only"""
+async def update_bus_status(bus_id: str, status_update: BusStatusUpdate):
+    """Update bus status only (ACTIVE, INACTIVE, MAINTENANCE)"""
     query = "UPDATE buses SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE bus_id = %s"
     result = execute_query(query, (status_update.status.value, bus_id))
     if result == 0:
@@ -794,8 +794,8 @@ async def update_bus_status(bus_id: str, status_update: StatusUpdate):
     return await get_bus(bus_id)
 
 @router.patch("/buses/{bus_id}/status", response_model=BusResponse, tags=["Buses"])
-async def patch_bus_status(bus_id: str, status_update: StatusUpdate):
-    """PATCH: Update bus status only"""
+async def patch_bus_status(bus_id: str, status_update: BusStatusUpdate):
+    """PATCH: Update bus status only (ACTIVE, INACTIVE, MAINTENANCE)"""
     query = "UPDATE buses SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE bus_id = %s"
     result = execute_query(query, (status_update.status.value, bus_id))
     if result == 0:
@@ -950,7 +950,24 @@ async def create_student(student: StudentCreate):
         return await get_student(student_id)
     except Exception as e:
         logger.error(f"Create student error: {e}")
-        raise HTTPException(status_code=400, detail="Failed to create student")
+        # Provide more specific error message
+        error_msg = str(e)
+        if "foreign key constraint" in error_msg.lower():
+            if "parent_id" in error_msg:
+                raise HTTPException(status_code=400, detail="Invalid parent_id: Parent not found")
+            elif "class_id" in error_msg:
+                raise HTTPException(status_code=400, detail="Invalid class_id: Class not found")
+            elif "pickup_route_id" in error_msg:
+                raise HTTPException(status_code=400, detail="Invalid pickup_route_id: Route not found")
+            elif "drop_route_id" in error_msg:
+                raise HTTPException(status_code=400, detail="Invalid drop_route_id: Route not found")
+            elif "pickup_stop_id" in error_msg:
+                raise HTTPException(status_code=400, detail="Invalid pickup_stop_id: Stop not found or doesn't belong to the pickup route")
+            elif "drop_stop_id" in error_msg:
+                raise HTTPException(status_code=400, detail="Invalid drop_stop_id: Stop not found or doesn't belong to the drop route")
+            else:
+                raise HTTPException(status_code=400, detail=f"Database constraint error: {error_msg}")
+        raise HTTPException(status_code=400, detail=f"Failed to create student: {error_msg}")
 
 @router.get("/students", response_model=List[StudentResponse], tags=["Students"])
 async def get_all_students():
