@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, validator, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, validator, ConfigDict, field_validator
 from typing import Optional, Literal
 from datetime import date, datetime
 from enum import Enum
@@ -298,7 +298,21 @@ class StudentBase(BaseModel):
     student_photo_url: Optional[str] = Field(None, max_length=200)
 
 class StudentCreate(StudentBase):
-    pass
+    @field_validator('s_parent_id', mode='before')
+    @classmethod
+    def validate_s_parent_id(cls, v):
+        """Convert invalid s_parent_id values to None"""
+        if v in [None, "", "string", "null"]:
+            return None
+        return v
+    
+    @field_validator('student_photo_url', mode='before')
+    @classmethod
+    def validate_photo_url(cls, v):
+        """Convert invalid photo URL values to None"""
+        if v in ["", "string", "null"]:
+            return None
+        return v
 
 class StudentUpdate(BaseModel):
     parent_id: Optional[str] = None
