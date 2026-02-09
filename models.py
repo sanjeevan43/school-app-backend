@@ -17,6 +17,8 @@ class BusStatus(str, Enum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"
     MAINTENANCE = "MAINTENANCE"
+    SCRAP = "SCRAP"
+    SPARE = "SPARE"
 
 class UserType(str, Enum):
     ADMIN = "admin"

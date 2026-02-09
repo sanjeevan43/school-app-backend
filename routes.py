@@ -786,7 +786,7 @@ async def update_bus(bus_id: str, bus_update: BusUpdate):
 
 @router.put("/buses/{bus_id}/status", response_model=BusResponse, tags=["Buses"])
 async def update_bus_status(bus_id: str, status_update: BusStatusUpdate):
-    """Update bus status only (ACTIVE, INACTIVE, MAINTENANCE)"""
+    """Update bus status only (ACTIVE, INACTIVE, MAINTENANCE, SCRAP, SPARE)"""
     query = "UPDATE buses SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE bus_id = %s"
     result = execute_query(query, (status_update.status.value, bus_id))
     if result == 0:
@@ -795,7 +795,7 @@ async def update_bus_status(bus_id: str, status_update: BusStatusUpdate):
 
 @router.patch("/buses/{bus_id}/status", response_model=BusResponse, tags=["Buses"])
 async def patch_bus_status(bus_id: str, status_update: BusStatusUpdate):
-    """PATCH: Update bus status only (ACTIVE, INACTIVE, MAINTENANCE)"""
+    """PATCH: Update bus status only (ACTIVE, INACTIVE, MAINTENANCE, SCRAP, SPARE)"""
     query = "UPDATE buses SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE bus_id = %s"
     result = execute_query(query, (status_update.status.value, bus_id))
     if result == 0:

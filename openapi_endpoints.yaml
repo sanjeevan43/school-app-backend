@@ -1,0 +1,678 @@
+paths:
+  /api/v1/auth/login:
+    post:
+      tags:
+      - Authentication
+      summary: Universal login for all user types (admin, parent, driver)
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/auth/profile:
+    get:
+      tags:
+      - Authentication
+      summary: Get user profile by phone number
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/admins:
+    post:
+      tags:
+      - Admins
+      summary: Create a new admin
+      responses:
+        '200':
+          description: Successful Response
+    get:
+      tags:
+      - Admins
+      summary: Get all admins
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/admins/{admin_id}:
+    get:
+      tags:
+      - Admins
+      summary: Get admin by ID
+      responses:
+        '200':
+          description: Successful Response
+    put:
+      tags:
+      - Admins
+      summary: Update admin
+      responses:
+        '200':
+          description: Successful Response
+    delete:
+      tags:
+      - Admins
+      summary: Delete admin
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/admins/{admin_id}/status:
+    put:
+      tags:
+      - Admins
+      summary: Update admin status only
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/parents:
+    post:
+      tags:
+      - Parents
+      summary: Create a new parent
+      responses:
+        '200':
+          description: Successful Response
+    get:
+      tags:
+      - Parents
+      summary: Get all parents
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/parents/{parent_id}:
+    get:
+      tags:
+      - Parents
+      summary: Get parent by ID
+      responses:
+        '200':
+          description: Successful Response
+    put:
+      tags:
+      - Parents
+      summary: Update parent with cascade updates
+      responses:
+        '200':
+          description: Successful Response
+    delete:
+      tags:
+      - Parents
+      summary: Delete parent with cascade cleanup
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/parents/{parent_id}/status:
+    put:
+      tags:
+      - Parents
+      summary: Update parent status only
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/parents/{parent_id}/fcm-token:
+    put:
+      tags:
+      - Parents
+      summary: Update FCM token for parent when they login
+      responses:
+        '200':
+          description: Successful Response
+    patch:
+      tags:
+      - Parents
+      summary: 'PATCH: Update parent FCM token'
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/parents/fcm-tokens/all:
+    get:
+      tags:
+      - Parents
+      summary: 'GET: Retrieve all parent FCM tokens'
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/drivers:
+    post:
+      tags:
+      - Drivers
+      summary: Create a new driver
+      responses:
+        '200':
+          description: Successful Response
+    get:
+      tags:
+      - Drivers
+      summary: Get all drivers
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/drivers/{driver_id}:
+    get:
+      tags:
+      - Drivers
+      summary: Get driver by ID
+      responses:
+        '200':
+          description: Successful Response
+    put:
+      tags:
+      - Drivers
+      summary: Update driver
+      responses:
+        '200':
+          description: Successful Response
+    delete:
+      tags:
+      - Drivers
+      summary: Delete driver
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/drivers/{driver_id}/status:
+    put:
+      tags:
+      - Drivers
+      summary: Update driver status only (ACTIVE, INACTIVE, SUSPENDED)
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/drivers/{driver_id}/fcm-token:
+    patch:
+      tags:
+      - Drivers
+      summary: 'PATCH: Update driver FCM token'
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/drivers/fcm-tokens/all:
+    get:
+      tags:
+      - Drivers
+      summary: 'GET: Retrieve all driver FCM tokens'
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/routes:
+    post:
+      tags:
+      - Routes
+      summary: Create a new route
+      responses:
+        '200':
+          description: Successful Response
+    get:
+      tags:
+      - Routes
+      summary: Get all routes
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/routes/{route_id}:
+    get:
+      tags:
+      - Routes
+      summary: Get route by ID
+      responses:
+        '200':
+          description: Successful Response
+    put:
+      tags:
+      - Routes
+      summary: Update route with cascade updates
+      responses:
+        '200':
+          description: Successful Response
+    delete:
+      tags:
+      - Routes
+      summary: Delete route with cascade cleanup
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/routes/{route_id}/status:
+    put:
+      tags:
+      - Routes
+      summary: Update route status only
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/route-stops:
+    post:
+      tags:
+      - Route Stops
+      summary: Create a new route stop
+      responses:
+        '200':
+          description: Successful Response
+    get:
+      tags:
+      - Route Stops
+      summary: Get all route stops, optionally filtered by route
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/route-stops/{stop_id}:
+    get:
+      tags:
+      - Route Stops
+      summary: Get route stop by ID
+      responses:
+        '200':
+          description: Successful Response
+    put:
+      tags:
+      - Route Stops
+      summary: Update route stop with cascade updates
+      responses:
+        '200':
+          description: Successful Response
+    delete:
+      tags:
+      - Route Stops
+      summary: Delete route stop with cascade cleanup
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/buses:
+    post:
+      tags:
+      - Buses
+      summary: Create a new bus
+      responses:
+        '200':
+          description: Successful Response
+    get:
+      tags:
+      - Buses
+      summary: Get all buses
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/buses/{bus_id}:
+    get:
+      tags:
+      - Buses
+      summary: Get bus by ID
+      responses:
+        '200':
+          description: Successful Response
+    put:
+      tags:
+      - Buses
+      summary: Update bus
+      responses:
+        '200':
+          description: Successful Response
+    delete:
+      tags:
+      - Buses
+      summary: Delete bus
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/buses/{bus_id}/status:
+    put:
+      tags:
+      - Buses
+      summary: Update bus status only (ACTIVE, INACTIVE, MAINTENANCE)
+      responses:
+        '200':
+          description: Successful Response
+    patch:
+      tags:
+      - Buses
+      summary: 'PATCH: Update bus status only (ACTIVE, INACTIVE, MAINTENANCE)'
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/buses/{bus_id}/route:
+    patch:
+      tags:
+      - Buses
+      summary: 'PATCH: Assign route to bus'
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/buses/{bus_id}/documents:
+    patch:
+      tags:
+      - Buses
+      summary: 'PATCH: Update bus document URLs (rc_book_url, fc_certificate_url)'
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/buses/driver/{driver_id}:
+    get:
+      tags:
+      - Buses
+      summary: Get bus assigned to a specific driver
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/classes:
+    post:
+      tags:
+      - Classes
+      summary: Create a new class
+      responses:
+        '200':
+          description: Successful Response
+    get:
+      tags:
+      - Classes
+      summary: Get all classes
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/classes/{class_id}:
+    get:
+      tags:
+      - Classes
+      summary: Get class by ID
+      responses:
+        '200':
+          description: Successful Response
+    put:
+      tags:
+      - Classes
+      summary: Update class
+      responses:
+        '200':
+          description: Successful Response
+    delete:
+      tags:
+      - Classes
+      summary: Delete class
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/classes/{class_id}/status:
+    put:
+      tags:
+      - Classes
+      summary: Update class status only
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/students:
+    post:
+      tags:
+      - Students
+      summary: Create a new student
+      responses:
+        '200':
+          description: Successful Response
+    get:
+      tags:
+      - Students
+      summary: Get all students
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/students/{student_id}:
+    get:
+      tags:
+      - Students
+      summary: Get student by ID
+      responses:
+        '200':
+          description: Successful Response
+    put:
+      tags:
+      - Students
+      summary: Update student with cascade updates
+      responses:
+        '200':
+          description: Successful Response
+    delete:
+      tags:
+      - Students
+      summary: Delete student with cascade cleanup
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/students/{student_id}/status:
+    put:
+      tags:
+      - Students
+      summary: Update student transport status only
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/students/{student_id}/secondary-parent:
+    patch:
+      tags:
+      - Students
+      summary: 'PATCH: Assign secondary parent to student. Set to null to unassign.'
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/trips:
+    post:
+      tags:
+      - Trips
+      summary: Create a new trip
+      responses:
+        '200':
+          description: Successful Response
+    get:
+      tags:
+      - Trips
+      summary: Get all trips
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/trips/{trip_id}:
+    get:
+      tags:
+      - Trips
+      summary: Get trip by ID
+      responses:
+        '200':
+          description: Successful Response
+    put:
+      tags:
+      - Trips
+      summary: Update trip
+      responses:
+        '200':
+          description: Successful Response
+    delete:
+      tags:
+      - Trips
+      summary: Delete trip
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/trips/{trip_id}/status:
+    put:
+      tags:
+      - Trips
+      summary: Update trip status only
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/error-handling:
+    post:
+      tags:
+      - Error Handling
+      summary: Create a new error log
+      responses:
+        '200':
+          description: Successful Response
+    get:
+      tags:
+      - Error Handling
+      summary: Get all error logs
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/error-handling/{error_id}:
+    get:
+      tags:
+      - Error Handling
+      summary: Get error log by ID
+      responses:
+        '200':
+          description: Successful Response
+    put:
+      tags:
+      - Error Handling
+      summary: Update error log
+      responses:
+        '200':
+          description: Successful Response
+    delete:
+      tags:
+      - Error Handling
+      summary: Delete error log
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/encrypt:
+    post:
+      tags:
+      - Encryption
+      summary: Encrypt text data
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/decrypt:
+    post:
+      tags:
+      - Encryption
+      summary: Decrypt text data
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/students/by-parent/{parent_id}:
+    get:
+      tags:
+      - Students
+      summary: Get all students for a specific parent
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/trips/by-driver/{driver_id}:
+    get:
+      tags:
+      - Trips
+      summary: Get all trips for a specific driver
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/trips/by-route/{route_id}:
+    get:
+      tags:
+      - Trips
+      summary: Get all trips for a specific route
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/students/by-route/{route_id}:
+    get:
+      tags:
+      - Students
+      summary: Get all students using a specific route
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/fcm-tokens:
+    post:
+      tags:
+      - FCM Tokens
+      summary: Create or update FCM token
+      responses:
+        '200':
+          description: Successful Response
+    get:
+      tags:
+      - FCM Tokens
+      summary: Get all FCM tokens
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/fcm-tokens/{fcm_id}:
+    get:
+      tags:
+      - FCM Tokens
+      summary: Get FCM token by ID
+      responses:
+        '200':
+          description: Successful Response
+    put:
+      tags:
+      - FCM Tokens
+      summary: Update FCM token with cascade updates
+      responses:
+        '200':
+          description: Successful Response
+    delete:
+      tags:
+      - FCM Tokens
+      summary: Delete FCM token
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/fcm-tokens/by-route/{route_id}:
+    get:
+      tags:
+      - FCM Tokens
+      summary: Get FCM tokens for all stops in a route
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/fcm-tokens/by-stop/{stop_id}:
+    get:
+      tags:
+      - FCM Tokens
+      summary: Get FCM tokens for one specific stop
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/bus-tracking/location:
+    post:
+      tags:
+      - Bus Tracking
+      summary: Automatic bus tracking - handles stop progression and trip completion
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/bus-tracking/notify:
+    post:
+      tags:
+      - Bus Tracking
+      summary: Send custom notification to parents
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/bus-tracking/cache-update/{route_id}:
+    post:
+      tags:
+      - Bus Tracking
+      summary: Update FCM token cache for a route
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/bus-tracking/cache/{route_id}:
+    get:
+      tags:
+      - Bus Tracking
+      summary: Get FCM cache for a route
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/trips/active:
+    get:
+      tags:
+      - Trips
+      summary: Get all active/ongoing trips
+      responses:
+        '200':
+          description: Successful Response
+  /api/v1/trips/{trip_id}/start:
+    put:
+      tags:
+      - Trips
+      summary: Driver starts trip - everything else becomes automatic
+      responses:
+        '200':
+          description: Successful Response
