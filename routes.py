@@ -840,6 +840,22 @@ async def patch_bus_documents(bus_id: str, documents: dict):
         raise HTTPException(status_code=404, detail="Bus not found")
     return await get_bus(bus_id)
 
+@router.get("/buses/driver/{driver_id}", response_model=BusResponse, tags=["Buses"])
+async def get_bus_by_driver(driver_id: str):
+    """Get bus assigned to a specific driver"""
+    query = """
+    SELECT bus_id, registration_number, driver_id, route_id, vehicle_type, 
+           bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date,
+           rc_book_url, fc_certificate_url, status, created_at, updated_at
+    FROM buses 
+    WHERE driver_id = %s
+    LIMIT 1
+    """
+    result = execute_query(query, (driver_id,), fetch_one=True)
+    if not result:
+        raise HTTPException(status_code=404, detail="No bus found for this driver")
+    return result
+
 @router.delete("/buses/{bus_id}", tags=["Buses"])
 async def delete_bus(bus_id: str):
     """Delete bus"""
@@ -1136,15 +1152,6 @@ async def update_trip(trip_id: str, trip_update: TripUpdate):
 @router.put("/trips/{trip_id}/status", response_model=TripResponse, tags=["Trips"])
 async def update_trip_status(trip_id: str, status_update: TripStatusUpdate):
     """Update trip status only"""
-    query = "UPDATE trips SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s"
-    result = execute_query(query, (status_update.status.value, trip_id))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Trip not found")
-    return await get_trip(trip_id)
-
-@router.patch("/trips/{trip_id}/status", response_model=TripResponse, tags=["Trips"])
-async def patch_trip_status(trip_id: str, status_update: TripStatusUpdate):
-    """PATCH: Update trip status only"""
     query = "UPDATE trips SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s"
     result = execute_query(query, (status_update.status.value, trip_id))
     if result == 0:
