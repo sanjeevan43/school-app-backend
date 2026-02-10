@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     
     # CORS Configuration
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8080", "https://api.selvagam.in"]
+    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8080", "https://api.selvagam.com"]
     
     # FCM Configuration
     FCM_SERVER_KEY: str = "your-fcm-server-key"
