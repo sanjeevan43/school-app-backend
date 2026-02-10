@@ -743,11 +743,13 @@ OR
 
 ---
 
+- **Base URL**: `https://api.selvagam.in/api/v1` (Production) / `http://72.61.250.191:8080/api/v1` (IP Backup)
+
 ## Interactive Documentation
 
 For interactive API testing and more details, visit:
-- **Swagger UI**: http://72.61.250.191:8080/docs
-- **ReDoc**: http://72.61.250.191:8080/redoc
+- **Swagger UI**: https://api.selvagam.in/docs
+- **ReDoc**: https://api.selvagam.in/redoc
 
 ---
 

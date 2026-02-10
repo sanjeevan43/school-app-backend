@@ -12,6 +12,7 @@ class DriverStatus(str, Enum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"
     SUSPENDED = "SUSPENDED"
+    RESIGNED = "RESIGNED"
 
 class BusStatus(str, Enum):
     ACTIVE = "ACTIVE"
@@ -467,15 +468,18 @@ class LoginRequest(BaseModel):
             raise ValueError('Phone number must be exactly 10 digits')
         return v
 
+class BusDriverAssign(BaseModel):
+    driver_id: Optional[str] = Field(None, description="Driver ID (UUID) or null to unassign")
+
 # Status Update Models
 class StatusUpdate(BaseModel):
     status: UserStatus = Field(..., description="New status value")
 
 class DriverStatusUpdate(BaseModel):
-    status: DriverStatus = Field(..., description="New driver status value (ACTIVE, INACTIVE, SUSPENDED)")
+    status: DriverStatus = Field(..., description="New driver status value (ACTIVE, INACTIVE, SUSPENDED, RESIGNED)")
 
 class BusStatusUpdate(BaseModel):
-    status: BusStatus = Field(..., description="New bus status value (ACTIVE, INACTIVE, MAINTENANCE)")
+    status: BusStatus = Field(..., description="New bus status value (ACTIVE, INACTIVE, MAINTENANCE, SCRAP, SPARE)")
 
 class TransportStatusUpdate(BaseModel):
     status: TransportStatus = Field(..., description="New transport status value")

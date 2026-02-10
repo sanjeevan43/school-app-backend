@@ -802,6 +802,26 @@ async def patch_bus_status(bus_id: str, status_update: BusStatusUpdate):
         raise HTTPException(status_code=404, detail="Bus not found")
     return await get_bus(bus_id)
 
+@router.patch("/buses/{bus_id}/driver", response_model=BusResponse, tags=["Buses"])
+async def assign_bus_driver(bus_id: str, assignment: BusDriverAssign):
+    """PATCH: Assign or reasssign driver to bus. Set driver_id to null to unassign."""
+    # Verify bus exists
+    bus = execute_query("SELECT bus_id FROM buses WHERE bus_id = %s", (bus_id,), fetch_one=True)
+    if not bus:
+        raise HTTPException(status_code=404, detail="Bus not found")
+
+    # If driver_id is provided, verify driver exists
+    if assignment.driver_id:
+        driver = execute_query("SELECT driver_id FROM drivers WHERE driver_id = %s", (assignment.driver_id,), fetch_one=True)
+        if not driver:
+            raise HTTPException(status_code=404, detail="Driver not found")
+            
+    query = "UPDATE buses SET driver_id = %s, updated_at = CURRENT_TIMESTAMP WHERE bus_id = %s"
+    logger.info(f"Assigning driver {assignment.driver_id} to bus {bus_id}")
+    execute_query(query, (assignment.driver_id, bus_id))
+    
+    return await get_bus(bus_id)
+
 @router.patch("/buses/{bus_id}/route", response_model=BusResponse, tags=["Buses"])
 async def patch_bus_route(bus_id: str, route_data: dict):
     """PATCH: Assign route to bus"""
@@ -1133,9 +1153,8 @@ async def update_trip(trip_id: str, trip_update: TripUpdate):
     values = []
     
     for field, value in trip_update.dict(exclude_unset=True).items():
-        if value is not None:
-            update_fields.append(f"{field} = %s")
-            values.append(value)
+        update_fields.append(f"{field} = %s")
+        values.append(value)
     
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update")
