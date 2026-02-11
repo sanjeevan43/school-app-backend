@@ -4,7 +4,7 @@ from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.config import get_settings
-from app.models import TokenData
+from app.api.models import TokenData
 
 settings = get_settings()
 security = HTTPBearer(auto_error=False)
