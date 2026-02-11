@@ -2,8 +2,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
-from config import get_settings
-from routes import router
+from app.core.config import get_settings
+from app.api.routes import router
 import uvicorn
 import logging
 
@@ -75,7 +75,7 @@ async def root():
 @app.get("/health", include_in_schema=False)
 async def health_check():
     try:
-        from database import get_db
+        from app.core.database import get_db
         with get_db() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("SELECT 1")

@@ -1,127 +1,191 @@
-# 🚌 School Transport Management API
+# School Transport Management API
 
-Complete Python FastAPI application for managing school transport with password-based authentication.
-
-## 🚀 Quick Start
-
-### 1. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Configure Database
-Copy `.env.example` to `.env` and update with your MySQL credentials:
-```env
-DB_HOST=your_mysql_host
-DB_PORT=3306
-DB_USER=your_database_user
-DB_PASSWORD=your_database_password
-DB_NAME=school_DB
-SECRET_KEY=your-secret-key-change-in-production
-```
-
-### 3. Run the API
-```bash
-python main.py
-```
-
-API will be available at: **http://localhost:8000**
-
-### 4. Access Documentation
-- **Interactive Docs**: http://localhost:8000/docs
-- **Alternative Docs**: http://localhost:8000/redoc
-
-## 📊 Complete CRUD Operations
-
-All 9 database tables have full CRUD (Create, Read, Update, Delete):
-
-1. ✅ **Admins** - System administrators
-2. ✅ **Parents** - Student parents/guardians  
-3. ✅ **Drivers** - Bus drivers
-4. ✅ **Routes** - Bus routes
-5. ✅ **Buses** - School buses
-6. ✅ **Classes** - School classes and sections
-7. ✅ **Route Stops** - Stops along routes
-8. ✅ **Students** - Students using transport
-9. ✅ **Trips** - Daily bus trips
-10. ✅ **Error Handling** - System error logs
-
-**Total Endpoints**: 60+
-
-## 🔐 Authentication
-
-### Universal Login (Password-based)
-**All user types** (admin, parent, driver) use phone + password:
-
-```bash
-POST /api/v1/auth/login
-{
-  "phone": 9876543210,
-  "password": "admin123"
-}
-```
+A comprehensive REST API for managing school transportation, including students, parents, drivers, buses, routes, and real-time tracking.
 
 ## 📁 Project Structure
 
 ```
 school-app-backend/
-├── main.py              # FastAPI application
-├── routes.py            # All API endpoints (60+)
-├── models.py            # Pydantic validation models
-├── auth.py              # JWT authentication
-├── database.py          # MySQL connection
-├── config.py            # Configuration
-├── encryption.py        # Data encryption utilities
-├── requirements.txt     # Dependencies
-├── .env.example         # Environment template
-└── README.md            # This file
+├── app/
+│   ├── __init__.py
+│   ├── api/                    # API endpoints and data models
+│   │   ├── __init__.py
+│   │   ├── routes.py          # All API route definitions
+│   │   └── models.py          # Pydantic models and schemas
+│   ├── core/                   # Core utilities and configuration
+│   │   ├── __init__.py
+│   │   ├── auth.py            # JWT authentication
+│   │   ├── config.py          # Application configuration
+│   │   ├── database.py        # Database connection and queries
+│   │   └── encryption.py      # Data encryption utilities
+│   └── services/               # Business logic services
+│       ├── __init__.py
+│       ├── bus_tracking.py    # Real-time bus tracking service
+│       └── cascade_updates.py # Cascade update operations
+├── docs/                       # Documentation files
+│   ├── ADD_DOMAIN_GUIDE.md
+│   ├── API_DOCUMENTATION.md
+│   ├── API_FIXES_SUMMARY.md
+│   ├── COMPLETE_API_DOCUMENTATION.md
+│   ├── DEPLOY_SECOND_API_GUIDE.md
+│   ├── School_Transport_API_Docs.docx
+│   └── School_Transport_API_Docs.pdf
+├── scripts/                    # Deployment and utility scripts
+│   └── setup_notification_service.sh
+├── sql/                        # SQL migration scripts  
+│   ├── schema.sql
+│   └── add_long_absent_status.sql
+├── main.py                     # FastAPI application entry point
+├── requirements.txt            # Python dependencies
+├── .env.example               # Environment variables template
+└── README.md                  # This file
+
 ```
 
-## 🔒 Security Features
+## 🚀 Features
 
-- ✅ JWT token authentication
-- ✅ Bcrypt password hashing (all users)
-- ✅ Password-based login (no OTP)
-- ✅ Role-based access control
-- ✅ SQL injection prevention
-- ✅ Input validation
-- ✅ **ID fields first** in all responses
+### Core Entities
+- **Admins**: System administrators
+- **Parents**: Student guardians with FCM push notifications
+- **Drivers**: Bus drivers with real-time tracking
+- **Students**: Student transport management
+- **Buses**: Fleet management with status tracking
+- **Routes**: Route and stop management
+- **Trips**: Daily trip tracking
 
-## 📖 API Examples
+### Status Management
+- **Student Status**: CURRENT, ALUMNI, DISCONTINUED, LONG_ABSENT
+- **Transport Status**: ACTIVE, TEMP_STOP, CANCELLED
+- **Bus Status**: ACTIVE, INACTIVE, MAINTENANCE, SCRAP, SPARE
+- **Driver Status**: ACTIVE, INACTIVE, SUSPENDED, RESIGNED
 
-### Create Admin (First Time)
+### Advanced Features
+- JWT-based authentication
+- Real-time bus tracking
+- FCM push notifications
+- Cascade updates across related entities
+- Data encryption
+- Comprehensive error handling
+
+## 📦 Installation
+
+1. **Clone the repository**
 ```bash
-curl -X POST "http://localhost:8000/api/v1/admins" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "phone": 9876543210,
-    "email": "admin@school.com",
-    "name": "Admin Name",
-    "password": "securepass"
-  }'
+git clone https://github.com/sanjeevan43/school-app-backend.git
+cd school-app-backend
 ```
 
-### Login (All User Types)
+2. **Create virtual environment**
 ```bash
-curl -X POST "http://localhost:8000/api/v1/auth/login" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "phone": 9876543210,
-    "password": "securepass"
-  }'
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# OR
+venv\\Scripts\\activate  # Windows
 ```
 
-## ✨ Features
+3. **Install dependencies**
+```bash
+pip install -r requirements.txt
+```
 
-- 🔐 **Password-based authentication** for all user types
-- 👥 **Admin-controlled user creation**
-- 📱 **Mobile-friendly API design**
-- 🚌 **Complete transport management**
-- 📊 **60+ RESTful endpoints**
-- 🔒 **Production-ready security**
-- 📖 **Auto-generated documentation**
-- 🆔 **ID fields appear first** in all responses
-- 🏫 **Class management system**
-- 📝 **Error logging system**
+4. **Configure environment**
+```bash
+cp .env.example .env
+# Edit .env with your database credentials
+```
 
-**Your school transport management API is ready!** 🚀
+5. **Setup database**
+```bash
+mysql -u your_user -p your_database < sql/schema.sql
+mysql -u your_user -p your_database < sql/add_long_absent_status.sql
+```
+
+## 🏃 Running the API
+
+### Development Mode
+```bash
+python main.py
+```
+
+### Production Mode (with systemd)
+See `docs/DEPLOY_SECOND_API_GUIDE.md` for production deployment instructions.
+
+## 📚 API Documentation
+
+Once running, access interactive documentation at:
+- **Swagger UI**: https://api.selvagam.com/docs
+- **ReDoc**: https://api.selvagam.com/redoc
+
+## 🔑 Environment Variables
+
+```env
+# Database
+DB_HOST=your_host
+DB_PORT=3306
+DB_USER=your_user
+DB_PASSWORD=your_password
+DB_NAME=school_DB
+
+# JWT
+SECRET_KEY=your_secret_key
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# API
+API_HOST=0.0.0.0
+API_PORT=8000
+DEBUG=True
+
+# CORS
+ALLOWED_ORIGINS=["*"]
+
+# FCM
+FCM_SERVER_KEY=your_fcm_key
+```
+
+## 🔧 Tech Stack
+
+- **Framework**: FastAPI
+- **Database**: MySQL
+- **Authentication**: JWT
+- **Notifications**: FCM (Firebase Cloud Messaging)
+- **Encryption**: Fernet (symmetric encryption)
+
+## 📖 API Endpoints
+
+### Authentication
+- `POST /api/v1/auth/login` - Universal login for all user types
+- `GET /api/v1/auth/profile` - Get user profile by phone
+
+### Key Endpoints
+- `/api/v1/admins` - Admin management
+- `/api/v1/parents` - Parent management with FCM tokens
+- `/api/v1/drivers` - Driver management
+- `/api/v1/students` - Student management with status filters
+- `/api/v1/buses` - Bus fleet management
+- `/api/v1/routes` - Route and stop management
+- `/api/v1/trips` - Daily trip tracking
+- `/api/v1/bus-tracking` - Real-time bus tracking
+
+## 🛠️ Development
+
+### Code Organization
+- **app/api/**: All API routes and data models
+- **app/core/**: Configuration, auth, database, encryption
+- **app/services/**: Business logic (tracking, cascades)
+- **docs/**: All documentation
+- **sql/**: Database migration scripts
+- **scripts/**: Deployment and utility scripts
+
+### Adding New Endpoints
+1. Define models in `app/api/models.py`
+2. Add routes in `app/api/routes.py`
+3. Update documentation
+
+## 📝 License
+
+This project is proprietary software for school transport management.
+
+## 👥 Support
+
+For API support, contact: admin@school.com

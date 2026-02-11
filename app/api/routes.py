@@ -6,12 +6,12 @@ import uuid
 import logging
 import json
 
-from database import get_db, execute_query
-from models import *
-from auth import create_access_token
-from encryption import encrypt_data, decrypt_data
-from bus_tracking import bus_tracking_service, fcm_service
-from cascade_updates import cascade_service
+from app.core.database import get_db, execute_query
+from app.api.models import *
+from app.core.auth import create_access_token
+from app.core.encryption import encrypt_data, decrypt_data
+from app.services.bus_tracking import bus_tracking_service, fcm_service
+from app.services.cascade_updates import cascade_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -428,10 +428,14 @@ async def create_driver(driver: DriverCreate):
         raise HTTPException(status_code=400, detail="Failed to create driver")
 
 @router.get("/drivers", response_model=List[DriverResponse], tags=["Drivers"])
-async def get_all_drivers():
-    """Get all drivers"""
-    query = "SELECT * FROM drivers ORDER BY created_at DESC"
-    drivers = execute_query(query, fetch_all=True)
+async def get_all_drivers(status: Optional[DriverStatus] = None):
+    """Get all drivers, optionally filtered by status"""
+    if status:
+        query = "SELECT * FROM drivers WHERE status = %s ORDER BY created_at DESC"
+        drivers = execute_query(query, (status.value,), fetch_all=True)
+    else:
+        query = "SELECT * FROM drivers ORDER BY created_at DESC"
+        drivers = execute_query(query, fetch_all=True)
     return drivers or []
 
 @router.get("/drivers/{driver_id}", response_model=DriverResponse, tags=["Drivers"])
@@ -746,10 +750,14 @@ async def create_bus(bus: BusCreate):
         raise HTTPException(status_code=400, detail="Failed to create bus")
 
 @router.get("/buses", response_model=List[BusResponse], tags=["Buses"])
-async def get_all_buses():
-    """Get all buses"""
-    query = "SELECT * FROM buses ORDER BY created_at DESC"
-    buses = execute_query(query, fetch_all=True)
+async def get_all_buses(status: Optional[BusStatus] = None):
+    """Get all buses, optionally filtered by status"""
+    if status:
+        query = "SELECT * FROM buses WHERE status = %s ORDER BY created_at DESC"
+        buses = execute_query(query, (status.value,), fetch_all=True)
+    else:
+        query = "SELECT * FROM buses ORDER BY created_at DESC"
+        buses = execute_query(query, fetch_all=True)
     return buses or []
 
 @router.get("/buses/{bus_id}", response_model=BusResponse, tags=["Buses"])
@@ -1006,10 +1014,29 @@ async def create_student(student: StudentCreate):
         raise HTTPException(status_code=400, detail=f"Failed to create student: {error_msg}")
 
 @router.get("/students", response_model=List[StudentResponse], tags=["Students"])
-async def get_all_students():
-    """Get all students"""
-    query = "SELECT * FROM students ORDER BY created_at DESC"
-    students = execute_query(query, fetch_all=True)
+async def get_all_students(
+    student_status: Optional[StudentStatus] = None,
+    transport_status: Optional[TransportStatus] = None
+):
+    """Get all students with optional filters for student_status and transport_status"""
+    conditions = []
+    params = []
+    
+    if student_status:
+        conditions.append("student_status = %s")
+        params.append(student_status.value)
+    
+    if transport_status:
+        conditions.append("transport_status = %s")
+        params.append(transport_status.value)
+    
+    if conditions:
+        query = f"SELECT * FROM students WHERE {' AND '.join(conditions)} ORDER BY created_at DESC"
+        students = execute_query(query, tuple(params), fetch_all=True)
+    else:
+        query = "SELECT * FROM students ORDER BY created_at DESC"
+        students = execute_query(query, fetch_all=True)
+    
     return students or []
 
 @router.get("/students/{student_id}", response_model=StudentResponse, tags=["Students"])
@@ -1034,8 +1061,9 @@ async def update_student(student_id: str, student_update: StudentUpdate):
         values = []
         
         for field, value in student_update.dict(exclude_unset=True).items():
-            update_fields.append(f"{field} = %s")
-            values.append(value)
+            if value is not None:
+                update_fields.append(f"{field} = %s")
+                values.append(value)
         
         if not update_fields:
             raise HTTPException(status_code=400, detail="No fields to update")
@@ -1059,12 +1087,42 @@ async def update_student(student_id: str, student_update: StudentUpdate):
         raise HTTPException(status_code=500, detail="Failed to update student")
 
 @router.put("/students/{student_id}/status", response_model=StudentResponse, tags=["Students"])
-async def update_student_status(student_id: str, status_update: TransportStatusUpdate):
-    """Update student transport status only"""
-    query = "UPDATE students SET transport_status = %s, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
+async def update_student_status(student_id: str, status_update: StudentStatusUpdate):
+    """Update student status only (CURRENT, ALUMNI, DISCONTINUED, LONG_ABSENT)""""
+    query = "UPDATE students SET student_status = %s, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
     result = execute_query(query, (status_update.status.value, student_id))
     if result == 0:
         raise HTTPException(status_code=404, detail="Student not found")
+    return await get_student(student_id)
+
+@router.patch("/students/{student_id}/status", response_model=StudentResponse, tags=["Students"])
+async def patch_student_status(student_id: str, status_update: CombinedStatusUpdate):
+    """PATCH: Update student status and/or transport status
+    
+    - student_status: CURRENT, ALUMNI, DISCONTINUED, LONG_ABSENT
+    - transport_status: ACTIVE, TEMP_STOP, CANCELLED
+    """
+    update_fields = []
+    values = []
+    
+    if status_update.student_status:
+        update_fields.append("student_status = %s")
+        values.append(status_update.student_status.value)
+    
+    if status_update.transport_status:
+        update_fields.append("transport_status = %s")
+        values.append(status_update.transport_status.value)
+    
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="At least one status field must be provided")
+    
+    values.append(student_id)
+    query = f"UPDATE students SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
+    result = execute_query(query, tuple(values))
+    
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
     return await get_student(student_id)
 
 @router.patch("/students/{student_id}/secondary-parent", response_model=StudentResponse, tags=["Students"])

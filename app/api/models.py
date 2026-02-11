@@ -35,6 +35,7 @@ class StudentStatus(str, Enum):
     CURRENT = "CURRENT"
     ALUMNI = "ALUMNI"
     DISCONTINUED = "DISCONTINUED"
+    LONG_ABSENT = "LONG_ABSENT"
 
 class TransportStatus(str, Enum):
     ACTIVE = "ACTIVE"
@@ -481,8 +482,15 @@ class DriverStatusUpdate(BaseModel):
 class BusStatusUpdate(BaseModel):
     status: BusStatus = Field(..., description="New bus status value (ACTIVE, INACTIVE, MAINTENANCE, SCRAP, SPARE)")
 
+class StudentStatusUpdate(BaseModel):
+    status: StudentStatus = Field(..., description="New student status value (CURRENT, ALUMNI, DISCONTINUED, LONG_ABSENT)")
+
 class TransportStatusUpdate(BaseModel):
-    status: TransportStatus = Field(..., description="New transport status value")
+    status: TransportStatus = Field(..., description="New transport status value (ACTIVE, TEMP_STOP, CANCELLED)")
+
+class CombinedStatusUpdate(BaseModel):
+    student_status: Optional[StudentStatus] = Field(None, description="Student status (CURRENT, ALUMNI, DISCONTINUED, LONG_ABSENT)")
+    transport_status: Optional[TransportStatus] = Field(None, description="Transport status (ACTIVE, TEMP_STOP, CANCELLED)")
 
 class TripStatusUpdate(BaseModel):
     status: TripStatus = Field(..., description="New trip status value")
