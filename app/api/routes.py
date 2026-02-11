@@ -1496,20 +1496,18 @@ async def get_fcm_tokens_by_route(route_id: str):
                     "stop_name": row['stop_name'],
                     "pickup_stop_order": row['pickup_stop_order'],
                     "drop_stop_order": row['drop_stop_order'],
-                    "students": [],
                     "fcm_tokens": []
                 }
             
-            if row['student_id'] and row['fcm_token']:
-                stops_data[stop_id]["students"].append({
-                    "student_id": row['student_id'],
-                    "student_name": row['student_name']
-                })
-                stops_data[stop_id]["fcm_tokens"].append({
+            if row['fcm_token']:
+                # Avoid duplicates if any
+                token_entry = {
                     "fcm_token": row['fcm_token'],
                     "parent_id": row['parent_id'],
                     "parent_name": row['parent_name']
-                })
+                }
+                if token_entry not in stops_data[stop_id]["fcm_tokens"]:
+                    stops_data[stop_id]["fcm_tokens"].append(token_entry)
         
         return {
             "route_id": route_id,
@@ -1553,7 +1551,6 @@ async def get_fcm_tokens_by_stop(stop_id: str):
         if not results:
             raise HTTPException(status_code=404, detail="Stop not found")
         
-        students = []
         fcm_tokens = []
         stop_info = None
         
@@ -1566,22 +1563,18 @@ async def get_fcm_tokens_by_stop(stop_id: str):
                     "drop_stop_order": row['drop_stop_order']
                 }
             
-            if row['student_id'] and row['fcm_token']:
-                students.append({
-                    "student_id": row['student_id'],
-                    "student_name": row['student_name']
-                })
-                fcm_tokens.append({
+            if row['fcm_token']:
+                token_entry = {
                     "fcm_token": row['fcm_token'],
                     "parent_id": row['parent_id'],
                     "parent_name": row['parent_name']
-                })
+                }
+                if token_entry not in fcm_tokens:
+                    fcm_tokens.append(token_entry)
         
         return {
             "stop_info": stop_info,
-            "students": students,
             "fcm_tokens": fcm_tokens,
-            "total_students": len(students),
             "total_tokens": len(fcm_tokens)
         }
         

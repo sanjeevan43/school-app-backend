@@ -128,7 +128,7 @@ class CascadeUpdateService:
     def update_route_fcm_cache(self, route_id: str):
         """Update FCM token cache for a specific route"""
         try:
-            # Get all stops for route with student FCM tokens
+            # Get all stops for route with student/parent FCM tokens
             query = """
             SELECT 
                 rs.stop_id,
@@ -137,22 +137,19 @@ class CascadeUpdateService:
                 rs.drop_stop_order,
                 JSON_ARRAYAGG(
                     JSON_OBJECT(
-                        'student_id', s.student_id,
-                        'student_name', s.name,
-                        'parent_tokens', (
-                            SELECT JSON_ARRAYAGG(ft.fcm_token)
-                            FROM fcm_tokens ft 
-                            WHERE ft.parent_id IN (s.parent_id, s.s_parent_id)
-                            AND ft.fcm_token IS NOT NULL
-                        )
+                        'fcm_token', ft.fcm_token,
+                        'parent_id', ft.parent_id,
+                        'parent_name', p.name
                     )
-                ) as students_data
+                ) as fcm_data
             FROM route_stops rs
             LEFT JOIN students s ON (
                 (rs.stop_id = s.pickup_stop_id AND s.pickup_route_id = rs.route_id) OR
                 (rs.stop_id = s.drop_stop_id AND s.drop_route_id = rs.route_id)
             )
-            WHERE rs.route_id = %s AND (s.transport_status = 'ACTIVE' OR s.student_id IS NULL)
+            LEFT JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
+            LEFT JOIN parents p ON ft.parent_id = p.parent_id
+            WHERE rs.route_id = %s AND s.transport_status = 'ACTIVE' AND ft.fcm_token IS NOT NULL
             GROUP BY rs.stop_id, rs.stop_name, rs.pickup_stop_order, rs.drop_stop_order
             """
             
@@ -165,7 +162,7 @@ class CascadeUpdateService:
                     "stop_name": stop['stop_name'],
                     "pickup_order": stop['pickup_stop_order'],
                     "drop_order": stop['drop_stop_order'],
-                    "students": json.loads(stop['students_data']) if stop['students_data'] else []
+                    "fcm_tokens": json.loads(stop['fcm_data']) if stop['fcm_data'] else []
                 }
             
             # Update cache table
