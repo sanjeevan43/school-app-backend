@@ -4,8 +4,8 @@ import logging
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 import math
-from database import execute_query
-from config import get_settings
+from app.core.database import execute_query
+from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()

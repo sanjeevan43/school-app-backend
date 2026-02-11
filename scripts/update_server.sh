@@ -1,21 +1,32 @@
 #!/bin/bash
+# Quick server update script
+# This script pulls the latest code and restarts the service
 
-# Server Update Script
-# Run this on your server after pulling new code
+echo "=== Updating School API Server ==="
 
-echo "📦 Pulling latest code..."
-cd /var/www/projects/client_side/selvegam_school
+# Navigate to project directory
+cd /var/www/projects/client_side/selvegam_school || exit 1
+
+# Stop the service
+echo "Stopping school-api service..."
+sudo systemctl stop school-api
+
+# Pull latest code
+echo "Pulling latest code from GitHub..."
 git pull origin main
 
-echo "🗄️ Updating database schema..."
-mysql -u u591840779_selvagam_user -p u591840779_selvagam_db < sql/add_long_absent_status.sql
+# Restart the service
+echo "Starting school-api service..."
+sudo systemctl start school-api
 
-echo "🔄 Restarting service..."
-sudo systemctl restart school-api
+# Wait a moment for service to start
+sleep 2
 
-echo "✅ Checking service status..."
+# Check status
+echo ""
+echo "=== Service Status ==="
 sudo systemctl status school-api --no-pager
 
 echo ""
-echo "🎉 Update complete!"
-echo "Check API at: https://api.selvagam.com/docs"
+echo "=== Recent Logs ==="
+sudo journalctl -u school-api -n 20 --no-pager

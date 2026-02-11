@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, Any, List
-from database import execute_query, get_db
+from app.core.database import execute_query, get_db
 import json
 
 logger = logging.getLogger(__name__)

@@ -3,8 +3,8 @@ from typing import Optional
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from config import get_settings
-from models import TokenData
+from app.core.config import get_settings
+from app.models import TokenData
 
 settings = get_settings()
 security = HTTPBearer(auto_error=False)

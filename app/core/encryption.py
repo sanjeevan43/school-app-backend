@@ -1,6 +1,6 @@
 import base64
 from cryptography.fernet import Fernet
-from config import get_settings
+from app.core.config import get_settings
 import logging
 
 settings = get_settings()

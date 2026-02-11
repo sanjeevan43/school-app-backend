@@ -1,7 +1,7 @@
 import pymysql
 from pymysql.cursors import DictCursor
 from contextlib import contextmanager
-from config import get_settings
+from app.core.config import get_settings
 import logging
 import time
 
