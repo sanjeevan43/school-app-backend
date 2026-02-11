@@ -1088,7 +1088,7 @@ async def update_student(student_id: str, student_update: StudentUpdate):
 
 @router.put("/students/{student_id}/status", response_model=StudentResponse, tags=["Students"])
 async def update_student_status(student_id: str, status_update: StudentStatusUpdate):
-    """Update student status only (CURRENT, ALUMNI, DISCONTINUED, LONG_ABSENT)""""
+    """Update student status only (CURRENT, ALUMNI, DISCONTINUED, LONG_ABSENT)"""
     query = "UPDATE students SET student_status = %s, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
     result = execute_query(query, (status_update.status.value, student_id))
     if result == 0:
