@@ -469,7 +469,8 @@ class LoginRequest(BaseModel):
     phone: int = Field(..., description="10-digit phone number")
     password: str = Field(..., min_length=1, description="User password")
     
-    @validator('phone')
+    @field_validator('phone')
+    @classmethod
     def validate_phone(cls, v):
         if not (1000000000 <= v <= 9999999999):
             raise ValueError('Phone number must be exactly 10 digits')

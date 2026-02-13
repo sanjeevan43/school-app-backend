@@ -1516,7 +1516,10 @@ async def get_fcm_tokens_by_route(route_id: str):
         )
         LEFT JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
         LEFT JOIN parents p ON ft.parent_id = p.parent_id
-        WHERE rs.route_id = %s AND s.transport_status = 'ACTIVE'
+        WHERE rs.route_id = %s 
+        AND s.transport_status = 'ACTIVE'
+        AND s.student_status = 'CURRENT' 
+        AND s.is_transport_user = True
         ORDER BY rs.pickup_stop_order, s.name
         """
         
@@ -1578,7 +1581,10 @@ async def get_fcm_tokens_by_stop(stop_id: str):
         )
         LEFT JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
         LEFT JOIN parents p ON ft.parent_id = p.parent_id
-        WHERE rs.stop_id = %s AND s.transport_status = 'ACTIVE'
+        WHERE rs.stop_id = %s 
+        AND s.transport_status = 'ACTIVE'
+        AND s.student_status = 'CURRENT' 
+        AND s.is_transport_user = True
         ORDER BY s.name
         """
         
@@ -1667,6 +1673,8 @@ async def send_custom_notification(notification: NotificationRequest):
             SELECT s.student_id FROM students s
             WHERE (s.pickup_stop_id = %s OR s.drop_stop_id = %s)
             AND s.transport_status = 'ACTIVE'
+            AND s.student_status = 'CURRENT'
+            AND s.is_transport_user = True
             """
             students = execute_query(students_query, (notification.stop_id, notification.stop_id), fetch_all=True)
         else:
@@ -1674,6 +1682,8 @@ async def send_custom_notification(notification: NotificationRequest):
             SELECT s.student_id FROM students s
             WHERE (s.pickup_route_id = %s OR s.drop_route_id = %s)
             AND s.transport_status = 'ACTIVE'
+            AND s.student_status = 'CURRENT'
+            AND s.is_transport_user = True
             """
             students = execute_query(students_query, (trip['route_id'], trip['route_id']), fetch_all=True)
         
@@ -1752,7 +1762,28 @@ async def start_trip(trip_id: str):
         if result == 0:
             raise HTTPException(status_code=404, detail="Trip not found or already started")
         
-        return await get_trip(trip_id)
+        # Notify all parents on this route that the trip has started
+        trip_data = await get_trip(trip_id)
+        students_query = """
+        SELECT s.student_id FROM students s
+        WHERE (s.pickup_route_id = %s OR s.drop_route_id = %s)
+        AND s.transport_status = 'ACTIVE'
+        AND s.student_status = 'CURRENT'
+        AND s.is_transport_user = True
+        """
+        students = execute_query(students_query, (trip_data['route_id'], trip_data['route_id']), fetch_all=True)
+        if students:
+            student_ids = [s['student_id'] for s in students]
+            parent_tokens = bus_tracking_service.get_parent_tokens_for_students(student_ids)
+            if parent_tokens:
+                fcm_service.send_notification(
+                    tokens=parent_tokens,
+                    title="Bus Trip Started",
+                    body=f"The bus trip for route '{trip_data['route_id']}' has started.",
+                    data={"trip_id": trip_id, "status": "started"}
+                )
+
+        return trip_data
     except Exception as e:
         logger.error(f"Start trip error: {e}")
         raise HTTPException(status_code=500, detail="Failed to start trip")

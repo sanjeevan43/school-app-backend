@@ -163,12 +163,35 @@ class BusTrackingService:
                             "stop_order": stop['stop_order']
                         }
                         
+                        # Send notifications to parents of students at this stop
+                        students_at_stop = self.get_students_for_route_stop(
+                            trip['route_id'], stop['stop_order'], trip['trip_type']
+                        )
+                        student_ids = [s['student_id'] for s in students_at_stop]
+                        parent_tokens = self.get_parent_tokens_for_students(student_ids)
+                        
+                        if parent_tokens:
+                            title = "Bus Arrival Update"
+                            body = f"The bus with registration {trip['registration_number']} has reached {stop['stop_name']}."
+                            self.fcm_service.send_notification(parent_tokens, title, body, {
+                                "trip_id": trip_id,
+                                "stop_id": stop['stop_id'],
+                                "stop_name": stop['stop_name']
+                            })
+                            logger.info(f"Sent notifications to {len(parent_tokens)} parents for stop {stop['stop_name']}")
+
                         # Check if this is the last stop - auto complete trip
                         if stop['stop_order'] == max(s['stop_order'] for s in stops):
                             execute_query(
                                 "UPDATE trips SET status = 'COMPLETED', ended_at = CURRENT_TIMESTAMP WHERE trip_id = %s",
                                 (trip_id,)
                             )
+                            # Notify start of trip completion
+                            if parent_tokens:
+                                self.fcm_service.send_notification(parent_tokens, "Trip Completed", 
+                                                                 f"The bus has reached the final stop: {stop['stop_name']}.", 
+                                                                 {"trip_id": trip_id})
+                            
                             trip_completed = True
                             break
             
