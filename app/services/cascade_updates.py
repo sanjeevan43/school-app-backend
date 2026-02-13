@@ -75,6 +75,26 @@ class CascadeUpdateService:
             logger.error(f"Route cascade update error: {e}")
             return False
     
+    def update_bus_cascades(self, bus_id: str, new_status: str):
+        """Update cascades when bus status changes"""
+        try:
+            # If bus is scrapped or inactive, unassign from driver and route
+            if new_status in ['SCRAP', 'INACTIVE']:
+                execute_query(
+                    "UPDATE buses SET driver_id = NULL, route_id = NULL WHERE bus_id = %s",
+                    (bus_id,)
+                )
+                # Cancel any ongoing trips for this bus
+                execute_query(
+                    "UPDATE trips SET status = 'CANCELED' WHERE bus_id = %s AND status IN ('NOT_STARTED', 'ONGOING')",
+                    (bus_id,)
+                )
+            logger.info(f"Updated cascades for bus {bus_id} with status {new_status}")
+            return True
+        except Exception as e:
+            logger.error(f"Bus cascade update error: {e}")
+            return False
+    
     def update_route_stop_cascades(self, stop_id: str, old_data: Dict = None, new_data: Dict = None):
         """Update all tables related to route stop changes"""
         try:

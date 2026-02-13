@@ -234,7 +234,7 @@ async def create_parent(parent: ParentCreate):
         raise HTTPException(status_code=400, detail=f"Failed to create parent: {str(e)}")
 
 @router.get("/parents", response_model=List[ParentResponse], tags=["Parents"])
-async def get_all_parents(active_only: bool = True):
+async def get_all_parents(active_only: bool = False):
     """Get all parents, defaults to active only"""
     if active_only:
         query = "SELECT * FROM parents WHERE parents_active_status = 'ACTIVE' ORDER BY created_at DESC"
@@ -376,7 +376,7 @@ async def get_all_parent_fcm_tokens():
     SELECT p.parent_id, p.name, p.phone, f.fcm_token, p.parents_active_status 
     FROM parents p
     INNER JOIN fcm_tokens f ON p.parent_id = f.parent_id
-    WHERE p.parents_active_status = 'ACTIVE' AND f.fcm_token IS NOT NULL
+    WHERE f.fcm_token IS NOT NULL
     ORDER BY p.name
     """
     parents = execute_query(query, fetch_all=True)
@@ -537,7 +537,7 @@ async def create_route(route: RouteCreate):
         raise HTTPException(status_code=400, detail="Failed to create route")
 
 @router.get("/routes", response_model=List[RouteResponse], tags=["Routes"])
-async def get_all_routes(active_only: bool = True):
+async def get_all_routes(active_only: bool = False):
     """Get all routes, defaults to active only"""
     if active_only:
         query = "SELECT * FROM routes WHERE routes_active_status = 'ACTIVE' ORDER BY name"
@@ -808,6 +808,10 @@ async def update_bus_status(bus_id: str, status_update: BusStatusUpdate):
     result = execute_query(query, (status_update.status.value, bus_id))
     if result == 0:
         raise HTTPException(status_code=404, detail="Bus not found")
+    
+    # Trigger cascade updates for bus status
+    cascade_service.update_bus_cascades(bus_id, status_update.status.value)
+    
     return await get_bus(bus_id)
 
 @router.patch("/buses/{bus_id}/status", response_model=BusResponse, tags=["Buses"])
@@ -817,6 +821,10 @@ async def patch_bus_status(bus_id: str, status_update: BusStatusUpdate):
     result = execute_query(query, (status_update.status.value, bus_id))
     if result == 0:
         raise HTTPException(status_code=404, detail="Bus not found")
+    
+    # Trigger cascade updates for bus status
+    cascade_service.update_bus_cascades(bus_id, status_update.status.value)
+    
     return await get_bus(bus_id)
 
 @router.patch("/buses/{bus_id}/driver", response_model=BusResponse, tags=["Buses"])
