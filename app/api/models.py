@@ -299,7 +299,9 @@ class StudentBase(BaseModel):
     pickup_stop_id: str
     drop_stop_id: str
     emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
+    study_year: str = Field(..., max_length=20)
     student_photo_url: Optional[str] = Field(None, max_length=200)
+    is_transport_user: bool = True
 
 class StudentCreate(StudentBase):
     @field_validator('s_parent_id', mode='before')
@@ -329,7 +331,9 @@ class StudentUpdate(BaseModel):
     pickup_stop_id: Optional[str] = None
     drop_stop_id: Optional[str] = None
     emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
+    study_year: Optional[str] = Field(None, max_length=20)
     student_photo_url: Optional[str] = Field(None, max_length=200)
+    is_transport_user: Optional[bool] = None
     student_status: Optional[StudentStatus] = None
     transport_status: Optional[TransportStatus] = None
 
@@ -348,9 +352,11 @@ class StudentResponse(BaseModel):
     pickup_stop_id: str
     drop_stop_id: str
     emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
+    study_year: str
     student_photo_url: Optional[str] = Field(None, max_length=200)
     student_status: StudentStatus
     transport_status: TransportStatus
+    is_transport_user: bool
     created_at: datetime
     updated_at: datetime
 
