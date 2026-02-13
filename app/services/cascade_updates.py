@@ -149,7 +149,9 @@ class CascadeUpdateService:
             )
             LEFT JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
             LEFT JOIN parents p ON ft.parent_id = p.parent_id
-            WHERE rs.route_id = %s AND s.transport_status = 'ACTIVE' AND ft.fcm_token IS NOT NULL
+            WHERE rs.route_id = %s AND s.transport_status = 'ACTIVE' 
+            AND s.student_status = 'CURRENT' AND s.is_transport_user = True
+            AND ft.fcm_token IS NOT NULL
             GROUP BY rs.stop_id, rs.stop_name, rs.pickup_stop_order, rs.drop_stop_order
             """
             

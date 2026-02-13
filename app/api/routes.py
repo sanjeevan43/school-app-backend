@@ -234,9 +234,12 @@ async def create_parent(parent: ParentCreate):
         raise HTTPException(status_code=400, detail=f"Failed to create parent: {str(e)}")
 
 @router.get("/parents", response_model=List[ParentResponse], tags=["Parents"])
-async def get_all_parents():
-    """Get all parents"""
-    query = "SELECT * FROM parents ORDER BY created_at DESC"
+async def get_all_parents(active_only: bool = True):
+    """Get all parents, defaults to active only"""
+    if active_only:
+        query = "SELECT * FROM parents WHERE parents_active_status = 'ACTIVE' ORDER BY created_at DESC"
+    else:
+        query = "SELECT * FROM parents ORDER BY created_at DESC"
     parents = execute_query(query, fetch_all=True)
     return parents or []
 
@@ -428,13 +431,16 @@ async def create_driver(driver: DriverCreate):
         raise HTTPException(status_code=400, detail="Failed to create driver")
 
 @router.get("/drivers", response_model=List[DriverResponse], tags=["Drivers"])
-async def get_all_drivers(status: Optional[DriverStatus] = None):
-    """Get all drivers, optionally filtered by status"""
+async def get_all_drivers(status: Optional[DriverStatus] = None, active_only: bool = False):
+    """Get all drivers, optionally filtered by status. Use active_only=True to quickly get ACTIVE drivers."""
     if status:
-        query = "SELECT * FROM drivers WHERE status = %s ORDER BY created_at DESC"
+        query = "SELECT * FROM drivers WHERE status = %s ORDER BY name"
         drivers = execute_query(query, (status.value,), fetch_all=True)
+    elif active_only:
+        query = "SELECT * FROM drivers WHERE status = 'ACTIVE' ORDER BY name"
+        drivers = execute_query(query, fetch_all=True)
     else:
-        query = "SELECT * FROM drivers ORDER BY created_at DESC"
+        query = "SELECT * FROM drivers ORDER BY name"
         drivers = execute_query(query, fetch_all=True)
     return drivers or []
 
@@ -531,9 +537,12 @@ async def create_route(route: RouteCreate):
         raise HTTPException(status_code=400, detail="Failed to create route")
 
 @router.get("/routes", response_model=List[RouteResponse], tags=["Routes"])
-async def get_all_routes():
-    """Get all routes"""
-    query = "SELECT * FROM routes ORDER BY created_at DESC"
+async def get_all_routes(active_only: bool = True):
+    """Get all routes, defaults to active only"""
+    if active_only:
+        query = "SELECT * FROM routes WHERE routes_active_status = 'ACTIVE' ORDER BY name"
+    else:
+        query = "SELECT * FROM routes ORDER BY created_at DESC"
     routes = execute_query(query, fetch_all=True)
     return routes or []
 
@@ -1016,19 +1025,25 @@ async def create_student(student: StudentCreate):
 @router.get("/students", response_model=List[StudentResponse], tags=["Students"])
 async def get_all_students(
     student_status: Optional[StudentStatus] = None,
-    transport_status: Optional[TransportStatus] = None
+    transport_status: Optional[TransportStatus] = None,
+    active_transport_only: bool = False
 ):
-    """Get all students with optional filters for student_status and transport_status"""
+    """Get all students with optional filters. active_transport_only=True returns CURRENT students using ACTIVE transport."""
     conditions = []
     params = []
     
-    if student_status:
-        conditions.append("student_status = %s")
-        params.append(student_status.value)
-    
-    if transport_status:
-        conditions.append("transport_status = %s")
-        params.append(transport_status.value)
+    if active_transport_only:
+        conditions.append("student_status = 'CURRENT'")
+        conditions.append("transport_status = 'ACTIVE'")
+        conditions.append("is_transport_user = True")
+    else:
+        if student_status:
+            conditions.append("student_status = %s")
+            params.append(student_status.value)
+        
+        if transport_status:
+            conditions.append("transport_status = %s")
+            params.append(transport_status.value)
     
     if conditions:
         query = f"SELECT * FROM students WHERE {' AND '.join(conditions)} ORDER BY created_at DESC"
@@ -1349,9 +1364,20 @@ async def decrypt_text(data: dict):
 # =====================================================
 
 @router.get("/students/by-parent/{parent_id}", response_model=List[StudentResponse], tags=["Students"])
-async def get_students_by_parent(parent_id: str):
-    """Get all students for a specific parent"""
-    query = "SELECT * FROM students WHERE parent_id = %s OR s_parent_id = %s ORDER BY name"
+async def get_students_by_parent(parent_id: str, active_only: bool = True):
+    """Get students for a parent. By default, only returns active transport users."""
+    if active_only:
+        query = """
+        SELECT * FROM students 
+        WHERE (parent_id = %s OR s_parent_id = %s) 
+        AND student_status = 'CURRENT' 
+        AND transport_status = 'ACTIVE'
+        AND is_transport_user = True
+        ORDER BY name
+        """
+    else:
+        query = "SELECT * FROM students WHERE parent_id = %s OR s_parent_id = %s ORDER BY name"
+    
     students = execute_query(query, (parent_id, parent_id), fetch_all=True)
     return students or []
 
@@ -1370,13 +1396,23 @@ async def get_trips_by_route(route_id: str):
     return trips or []
 
 @router.get("/students/by-route/{route_id}", response_model=List[StudentResponse], tags=["Students"])
-async def get_students_by_route(route_id: str):
-    """Get all students using a specific route"""
-    query = """
-    SELECT * FROM students 
-    WHERE pickup_route_id = %s OR drop_route_id = %s 
-    ORDER BY name
-    """
+async def get_students_by_route(route_id: str, active_only: bool = True):
+    """Get students on a route. By default, only returns active transport users."""
+    if active_only:
+        query = """
+        SELECT * FROM students 
+        WHERE (pickup_route_id = %s OR drop_route_id = %s) 
+        AND student_status = 'CURRENT' 
+        AND transport_status = 'ACTIVE'
+        AND is_transport_user = True
+        ORDER BY name
+        """
+    else:
+        query = """
+        SELECT * FROM students 
+        WHERE pickup_route_id = %s OR drop_route_id = %s 
+        ORDER BY name
+        """
     students = execute_query(query, (route_id, route_id), fetch_all=True)
     return students or []
 

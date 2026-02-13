@@ -75,7 +75,8 @@ class BusTrackingService:
             JOIN route_stops rs ON s.pickup_stop_id = rs.stop_id
             LEFT JOIN fcm_tokens ft ON s.student_id = ft.student_id
             WHERE s.pickup_route_id = %s AND rs.pickup_stop_order = %s 
-            AND s.transport_status = 'ACTIVE'
+            AND s.transport_status = 'ACTIVE' AND s.student_status = 'CURRENT'
+            AND s.is_transport_user = True
             """
         else:  # EVENING
             query = """
@@ -84,7 +85,8 @@ class BusTrackingService:
             JOIN route_stops rs ON s.drop_stop_id = rs.stop_id
             LEFT JOIN fcm_tokens ft ON s.student_id = ft.student_id
             WHERE s.drop_route_id = %s AND rs.drop_stop_order = %s 
-            AND s.transport_status = 'ACTIVE'
+            AND s.transport_status = 'ACTIVE' AND s.student_status = 'CURRENT'
+            AND s.is_transport_user = True
             """
         
         return execute_query(query, (route_id, stop_order), fetch_all=True) or []
@@ -208,7 +210,9 @@ class BusTrackingService:
             )
             LEFT JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
             LEFT JOIN parents p ON ft.parent_id = p.parent_id
-            WHERE rs.route_id = %s AND s.transport_status = 'ACTIVE' AND ft.fcm_token IS NOT NULL
+            WHERE rs.route_id = %s AND s.transport_status = 'ACTIVE' 
+            AND s.student_status = 'CURRENT' AND s.is_transport_user = True
+            AND ft.fcm_token IS NOT NULL
             GROUP BY rs.stop_id, rs.stop_name, rs.pickup_stop_order, rs.drop_stop_order
             """
             
