@@ -635,6 +635,13 @@ async def delete_route(route_id: str):
 async def create_route_stop(route_stop: RouteStopCreate):
     """Create a new route stop"""
     try:
+        # Make space for the new stop if needed
+        target_order = route_stop.pickup_stop_order
+        execute_query(
+            "UPDATE route_stops SET pickup_stop_order = pickup_stop_order + 1, drop_stop_order = drop_stop_order + 1 WHERE route_id = %s AND pickup_stop_order >= %s",
+            (route_stop.route_id, target_order)
+        )
+
         stop_id = str(uuid.uuid4())
         query = """
         INSERT INTO route_stops (stop_id, route_id, stop_name, latitude, longitude, 
@@ -642,8 +649,10 @@ async def create_route_stop(route_stop: RouteStopCreate):
         VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
         execute_query(query, (stop_id, route_stop.route_id, route_stop.stop_name,
-                             route_stop.latitude, route_stop.longitude, 
-                             route_stop.pickup_stop_order, route_stop.drop_stop_order))
+                             target_order, target_order))
+        
+        # Normalize orders to ensure they are 1, 2, 3...
+        _reorder_route_stops(route_stop.route_id)
         
         return await get_route_stop(stop_id)
     except Exception as e:
@@ -672,9 +681,9 @@ async def get_route_stop(stop_id: str):
 
 @router.put("/route-stops/{stop_id}", response_model=RouteStopResponse, tags=["Route Stops"])
 async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
-    """Update route stop with cascade updates"""
+    """Update route stop and reorder if order changed"""
     try:
-        # Get old data for cascade comparison
+        # Get old data for cascade comparison and route_id
         old_stop = execute_query("SELECT * FROM route_stops WHERE stop_id = %s", (stop_id,), fetch_one=True)
         if not old_stop:
             raise HTTPException(status_code=404, detail="Route stop not found")
@@ -697,6 +706,10 @@ async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
         if result == 0:
             raise HTTPException(status_code=404, detail="Route stop not found")
         
+        # If order was updated, reorder all stops in this route
+        if stop_update.pickup_stop_order is not None:
+             _reorder_route_stops(old_stop['route_id'])
+        
         # Trigger cascade updates
         new_data = stop_update.dict(exclude_unset=True)
         cascade_service.update_route_stop_cascades(stop_id, old_stop, new_data)
@@ -710,14 +723,16 @@ async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
 
 @router.delete("/route-stops/{stop_id}", tags=["Route Stops"])
 async def delete_route_stop(stop_id: str):
-    """Delete route stop with cascade cleanup"""
+    """Delete route stop and reorder remaining stops"""
     try:
-        # Get stop data for cascade cleanup
+        # Get stop data for route_id
         stop_data = execute_query("SELECT * FROM route_stops WHERE stop_id = %s", (stop_id,), fetch_one=True)
         if not stop_data:
             raise HTTPException(status_code=404, detail="Route stop not found")
         
-        # Perform cascade cleanup
+        route_id = stop_data['route_id']
+        
+        # Perform cascade cleanup before delete
         cascade_service.delete_cascades("route_stops", stop_id, stop_data)
         
         # Delete route stop
@@ -726,12 +741,52 @@ async def delete_route_stop(stop_id: str):
         if result == 0:
             raise HTTPException(status_code=404, detail="Route stop not found")
         
-        return {"message": "Route stop deleted successfully"}
+        # Reorder remaining stops
+        _reorder_route_stops(route_id)
+        
+        return {"message": "Route stop deleted and route reordered successfully"}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Delete route stop error: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete route stop")
+
+def _reorder_route_stops(route_id: str):
+    """Helper to reorder stops sequentially for a route (1, 2, 3...)"""
+    try:
+        # Fetch stops ordered by current pickup order
+        stops = execute_query(
+            "SELECT stop_id, pickup_stop_order FROM route_stops WHERE route_id = %s ORDER BY pickup_stop_order ASC, created_at ASC",
+            (route_id,),
+            fetch_all=True
+        )
+        
+        if not stops:
+            return
+            
+        for i, stop in enumerate(stops):
+            new_order = i + 1
+            # Update both pickup and drop orders to keep them in sync for now
+            execute_query(
+                "UPDATE route_stops SET pickup_stop_order = %s, drop_stop_order = %s WHERE stop_id = %s",
+                (new_order, new_order, stop['stop_id'])
+            )
+            
+        # Update FCM cache for the route
+        cascade_service.update_route_fcm_cache(route_id)
+        
+    except Exception as e:
+        logger.error(f"Error in _reorder_route_stops for route {route_id}: {e}")
+
+@router.post("/routes/{route_id}/reorder", tags=["Route Stops"])
+async def manual_reorder_route(route_id: str):
+    """Manually trigger reordering of all stops in a route"""
+    try:
+        _reorder_route_stops(route_id)
+        return {"message": "Route stops reordered successfully"}
+    except Exception as e:
+        logger.error(f"Manual reorder error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to reorder route stops")
 
 # =====================================================
 # BUS ENDPOINTS
