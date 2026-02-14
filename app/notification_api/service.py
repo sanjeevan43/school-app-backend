@@ -72,10 +72,17 @@ class FCMService:
             message = messaging.Message(
                 notification=messaging.Notification(title=title, body=body),
                 data={
+                    'type': 'admin_notification',
                     'messageType': message_type,
                     'recipientType': topic,
-                    'timestamp': str(int(time.time() * 1000))
+                    'timestamp': str(int(time.time() * 1000)),
+                    'source': 'admin_panel',
+                    'message': body
                 },
+                android=messaging.AndroidConfig(
+                    priority='high',
+                    ttl=3600
+                ),
                 topic=topic
             )
 

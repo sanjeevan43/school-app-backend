@@ -115,7 +115,17 @@ async def broadcast_drivers(
     """Send a notification to all drivers"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    return await notification_service.send_to_topic(title, body, topic="drivers")
+    
+    # Fetch all driver tokens
+    drivers = execute_query("SELECT fcm_token FROM drivers WHERE fcm_token IS NOT NULL AND status = 'ACTIVE'", fetch_all=True)
+    
+    results = []
+    for d in drivers:
+        if d['fcm_token']:
+            res = await notification_service.send_to_device(title, body, d['fcm_token'], recipient_type="driver")
+            results.append(res)
+            
+    return {"success": True, "delivered_count": len(results), "total_found": len(drivers)}
 
 @router.post("/notifications/broadcast/parents", tags=["Notifications"])
 async def broadcast_parents(
@@ -126,7 +136,16 @@ async def broadcast_parents(
     """Send a notification to all parents"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    return await notification_service.send_to_topic(title, body, topic="parents")
+    
+    # Fetch all unique parent tokens
+    tokens = execute_query("SELECT DISTINCT fcm_token FROM fcm_tokens WHERE parent_id IS NOT NULL", fetch_all=True)
+    
+    results = []
+    for t in tokens:
+        res = await notification_service.send_to_device(title, body, t['fcm_token'], recipient_type="parent")
+        results.append(res)
+        
+    return {"success": True, "delivered_count": len(results), "total_found": len(tokens)}
 
 @router.post("/notifications/student/{student_id}", tags=["Notifications"])
 async def send_student_notification(
