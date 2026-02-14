@@ -1197,9 +1197,24 @@ async def patch_student_status(student_id: str, status_update: CombinedStatusUpd
     values.append(student_id)
     query = f"UPDATE students SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
     result = execute_query(query, tuple(values))
-    
     if result == 0:
         raise HTTPException(status_code=404, detail="Student not found")
+    
+    # Trigger cascade updates if needed
+    cascade_service.update_student_cascades(student_id)
+    
+    return await get_student(student_id)
+
+@router.put("/students/{student_id}/transport-status", response_model=StudentResponse, tags=["Students"])
+async def update_student_transport_status(student_id: str, status_update: TransportStatusUpdate):
+    """Update student transport status only (ACTIVE, TEMP_STOP, CANCELLED)"""
+    query = "UPDATE students SET transport_status = %s, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
+    result = execute_query(query, (status_update.status.value, student_id))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    # Trigger cascade updates (e.g., updating FCM cache for affected routes)
+    cascade_service.update_student_cascades(student_id)
     
     return await get_student(student_id)
 
