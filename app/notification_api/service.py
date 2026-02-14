@@ -31,8 +31,7 @@ class FCMService:
     def init_firebase(self):
         try:
             if not self.creds_path:
-                logger.error("firebase-credentials.json NOT FOUND")
-                return False
+                return False, "firebase-credentials.json NOT FOUND"
 
             with open(self.creds_path, 'r', encoding='utf-8') as f:
                 service_account = json.load(f)
@@ -57,16 +56,18 @@ class FCMService:
 
             logger.info(f"Firebase Admin initialized for: {firebase_admin.get_app().project_id}")
             self.initialized = True
-            return True
+            return True, "Success"
         except Exception as error:
-            logger.error(f"Firebase Error during init: {error}")
-            return False
+            err_msg = str(error)
+            logger.error(f"Firebase Error during init: {err_msg}")
+            return False, err_msg
 
     async def send_to_topic(self, title: str, body: str, topic: str = 'all_users', message_type: str = 'text'):
         try:
             if not self.initialized:
-                if not self.init_firebase():
-                    return {"success": False, "error": "Firebase not initialized"}
+                success, error = self.init_firebase()
+                if not success:
+                    return {"success": False, "error": f"Firebase not initialized: {error}"}
 
             message = messaging.Message(
                 notification=messaging.Notification(title=title, body=body),
@@ -87,8 +88,9 @@ class FCMService:
     async def send_to_device(self, title: str, body: str, token: str, recipient_type: str = 'parent', message_type: str = 'text'):
         try:
             if not self.initialized:
-                if not self.init_firebase():
-                    return {"success": False, "error": "Firebase not initialized"}
+                success, error = self.init_firebase()
+                if not success:
+                    return {"success": False, "error": f"Firebase not initialized: {error}"}
 
             message = messaging.Message(
                 token=token,

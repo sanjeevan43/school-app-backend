@@ -1591,18 +1591,32 @@ async def get_fcm_tokens_by_route(route_id: str):
         LEFT JOIN students s ON (
             (rs.stop_id = s.pickup_stop_id AND s.pickup_route_id = rs.route_id) OR
             (rs.stop_id = s.drop_stop_id AND s.drop_route_id = rs.route_id)
-        )
+        ) AND s.transport_status = 'ACTIVE' AND s.student_status = 'CURRENT' AND s.is_transport_user = True
         LEFT JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
         LEFT JOIN parents p ON ft.parent_id = p.parent_id
-        WHERE rs.route_id = %s 
-        AND s.transport_status = 'ACTIVE'
-        AND s.student_status = 'CURRENT' 
-        AND s.is_transport_user = True
+        WHERE rs.route_id = %s
         ORDER BY rs.pickup_stop_order, s.name
         """
         
         results = execute_query(query, (route_id,), fetch_all=True)
         
+        # Also catch students on this route who DON'T have a stop assigned
+        unassigned_query = """
+        SELECT 
+            s.student_id,
+            s.name as student_name,
+            ft.fcm_token,
+            ft.parent_id,
+            p.name as parent_name
+        FROM students s
+        LEFT JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
+        LEFT JOIN parents p ON ft.parent_id = p.parent_id
+        WHERE (s.pickup_route_id = %s OR s.drop_route_id = %s)
+        AND s.pickup_stop_id IS NULL AND s.drop_stop_id IS NULL
+        AND s.transport_status = 'ACTIVE' AND s.student_status = 'CURRENT' AND s.is_transport_user = True
+        """
+        unassigned_results = execute_query(unassigned_query, (route_id, route_id), fetch_all=True)
+
         # Group by stops
         stops_data = {}
         for row in results:
@@ -1617,7 +1631,6 @@ async def get_fcm_tokens_by_route(route_id: str):
                 }
             
             if row['fcm_token']:
-                # Avoid duplicates if any
                 token_entry = {
                     "fcm_token": row['fcm_token'],
                     "parent_id": row['parent_id'],
@@ -1626,6 +1639,26 @@ async def get_fcm_tokens_by_route(route_id: str):
                 if token_entry not in stops_data[stop_id]["fcm_tokens"]:
                     stops_data[stop_id]["fcm_tokens"].append(token_entry)
         
+        # Add unassigned students if any
+        if unassigned_results:
+            unassigned_stop_id = "unassigned"
+            stops_data[unassigned_stop_id] = {
+                "stop_id": "unassigned",
+                "stop_name": "Unassigned/General Route",
+                "pickup_stop_order": 999,
+                "drop_stop_order": 999,
+                "fcm_tokens": []
+            }
+            for row in unassigned_results:
+                if row['fcm_token']:
+                    token_entry = {
+                        "fcm_token": row['fcm_token'],
+                        "parent_id": row['parent_id'],
+                        "parent_name": row['parent_name']
+                    }
+                    if token_entry not in stops_data[unassigned_stop_id]["fcm_tokens"]:
+                        stops_data[unassigned_stop_id]["fcm_tokens"].append(token_entry)
+
         return {
             "route_id": route_id,
             "stops": list(stops_data.values()),
@@ -1656,13 +1689,10 @@ async def get_fcm_tokens_by_stop(stop_id: str):
         LEFT JOIN students s ON (
             (rs.stop_id = s.pickup_stop_id) OR
             (rs.stop_id = s.drop_stop_id)
-        )
+        ) AND s.transport_status = 'ACTIVE' AND s.student_status = 'CURRENT' AND s.is_transport_user = True
         LEFT JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
         LEFT JOIN parents p ON ft.parent_id = p.parent_id
         WHERE rs.stop_id = %s 
-        AND s.transport_status = 'ACTIVE'
-        AND s.student_status = 'CURRENT' 
-        AND s.is_transport_user = True
         ORDER BY s.name
         """
         
