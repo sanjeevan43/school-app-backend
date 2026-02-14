@@ -17,59 +17,8 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # =====================================================
-# AUTHENTICATION ENDPOINTS
+# USER PROFILE
 # =====================================================
-
-@router.post("/auth/login", response_model=Token, tags=["Authentication"])
-async def login(login_data: LoginRequest):
-    """Universal login for all user types (admin, parent, driver)"""
-    try:
-        # Check admins table
-        admin_query = "SELECT admin_id, phone, password_hash, name FROM admins WHERE phone = %s AND status = 'ACTIVE'"
-        admin = execute_query(admin_query, (login_data.phone,), fetch_one=True)
-        
-        if admin and admin['password_hash'] == login_data.password:
-            # Update last login
-            execute_query("UPDATE admins SET last_login_at = %s WHERE admin_id = %s", 
-                         (datetime.now(), admin['admin_id']))
-            
-            access_token = create_access_token(
-                data={"sub": admin['admin_id'], "user_type": "admin", "phone": admin['phone']}
-            )
-            return {"access_token": access_token, "token_type": "bearer"}
-        
-        # Check parents table
-        parent_query = "SELECT parent_id, phone, password_hash, name FROM parents WHERE phone = %s AND parents_active_status = 'ACTIVE'"
-        parent = execute_query(parent_query, (login_data.phone,), fetch_one=True)
-        
-        if parent and parent['password_hash'] == login_data.password:
-            # Update last login
-            execute_query("UPDATE parents SET last_login_at = %s WHERE parent_id = %s", 
-                         (datetime.now(), parent['parent_id']))
-            
-            access_token = create_access_token(
-                data={"sub": parent['parent_id'], "user_type": "parent", "phone": parent['phone']}
-            )
-            return {"access_token": access_token, "token_type": "bearer"}
-        
-        # Check drivers table
-        driver_query = "SELECT driver_id, phone, password_hash, name FROM drivers WHERE phone = %s AND status = 'ACTIVE'"
-        driver = execute_query(driver_query, (login_data.phone,), fetch_one=True)
-        
-        if driver and driver['password_hash'] == login_data.password:
-            access_token = create_access_token(
-                data={"sub": driver['driver_id'], "user_type": "driver", "phone": driver['phone']}
-            )
-            return {"access_token": access_token, "token_type": "bearer"}
-        
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid phone number or password"
-        )
-        
-    except Exception as e:
-        logger.error(f"Login error: {e}")
-        raise HTTPException(status_code=500, detail="Login failed")
 
 @router.get("/auth/profile", tags=["Authentication"])
 async def get_profile(phone: int):

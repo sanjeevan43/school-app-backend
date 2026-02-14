@@ -54,7 +54,7 @@ class TripStatus(str, Enum):
 
 # Admin Models
 class AdminBase(BaseModel):
-    phone: int = Field(..., ge=1000000000, le=9999999999)
+    phone: int = Field(..., description="User phone number")
     email: Optional[EmailStr] = None
     name: str = Field(..., max_length=100)
 
@@ -62,14 +62,14 @@ class AdminCreate(AdminBase):
     password: str = Field(..., min_length=6, max_length=72)
 
 class AdminUpdate(BaseModel):
-    phone: Optional[int] = Field(None, ge=1000000000, le=9999999999)
+    phone: Optional[int] = Field(None, description="User phone number")
     email: Optional[EmailStr] = None
     name: Optional[str] = Field(None, max_length=100)
     status: Optional[UserStatus] = None
 
 class AdminResponse(BaseModel):
     admin_id: str
-    phone: int = Field(..., ge=1000000000, le=9999999999)
+    phone: int = Field(..., description="User phone number")
     email: Optional[EmailStr] = None
     name: str = Field(..., max_length=100)
     status: UserStatus
@@ -81,7 +81,7 @@ class AdminResponse(BaseModel):
 
 # Parent Models
 class ParentBase(BaseModel):
-    phone: int = Field(..., ge=1000000000, le=9999999999)
+    phone: int = Field(..., description="User phone number")
     email: Optional[EmailStr] = None
     name: str = Field(..., max_length=100)
     parent_role: ParentRole = ParentRole.GUARDIAN
@@ -95,7 +95,7 @@ class ParentCreate(ParentBase):
     password: str = Field(..., min_length=6, max_length=72)  # Password required for login
 
 class ParentUpdate(BaseModel):
-    phone: Optional[int] = Field(None, ge=1000000000, le=9999999999)
+    phone: Optional[int] = Field(None, description="User phone number")
     email: Optional[EmailStr] = None
     name: Optional[str] = Field(None, max_length=100)
     parent_role: Optional[ParentRole] = None
@@ -108,7 +108,7 @@ class ParentUpdate(BaseModel):
 
 class ParentResponse(BaseModel):
     parent_id: str
-    phone: int = Field(..., ge=1000000000, le=9999999999)
+    phone: int = Field(..., description="User phone number")
     email: Optional[EmailStr] = None
     name: str = Field(..., max_length=100)
     parent_role: ParentRole = ParentRole.GUARDIAN
@@ -127,7 +127,7 @@ class ParentResponse(BaseModel):
 # Driver Models
 class DriverBase(BaseModel):
     name: str = Field(..., max_length=100)
-    phone: int = Field(..., ge=1000000000, le=9999999999)
+    phone: int = Field(..., description="User phone number")
     email: Optional[EmailStr] = None
     licence_number: Optional[str] = Field(None, max_length=50)
     licence_expiry: Optional[date] = None
@@ -138,7 +138,7 @@ class DriverCreate(DriverBase):
 
 class DriverUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
-    phone: Optional[int] = Field(None, ge=1000000000, le=9999999999)
+    phone: Optional[int] = Field(None, description="User phone number")
     email: Optional[EmailStr] = None
     licence_number: Optional[str] = Field(None, max_length=50)
     licence_expiry: Optional[date] = None
@@ -148,7 +148,7 @@ class DriverUpdate(BaseModel):
 class DriverResponse(BaseModel):
     driver_id: str
     name: str = Field(..., max_length=100)
-    phone: int = Field(..., ge=1000000000, le=9999999999)
+    phone: int = Field(..., description="User phone number")
     email: Optional[EmailStr] = None
     licence_number: Optional[str] = Field(None, max_length=50)
     licence_expiry: Optional[date] = None
@@ -297,7 +297,7 @@ class StudentBase(BaseModel):
     drop_route_id: str
     pickup_stop_id: str
     drop_stop_id: str
-    emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
+    emergency_contact: Optional[int] = Field(None, description="Emergency contact number")
     study_year: str = Field(..., max_length=20)
     student_photo_url: Optional[str] = Field(None, max_length=200)
     is_transport_user: bool = True
@@ -329,7 +329,7 @@ class StudentUpdate(BaseModel):
     drop_route_id: Optional[str] = None
     pickup_stop_id: Optional[str] = None
     drop_stop_id: Optional[str] = None
-    emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
+    emergency_contact: Optional[int] = Field(None, description="Emergency contact number")
     study_year: Optional[str] = Field(None, max_length=20)
     student_photo_url: Optional[str] = Field(None, max_length=200)
     is_transport_user: Optional[bool] = None
@@ -350,7 +350,7 @@ class StudentResponse(BaseModel):
     drop_route_id: str
     pickup_stop_id: str
     drop_stop_id: str
-    emergency_contact: Optional[int] = Field(None, ge=1000000000, le=9999999999)
+    emergency_contact: Optional[int] = Field(None, description="Emergency contact number")
     study_year: str
     student_photo_url: Optional[str] = Field(None, max_length=200)
     student_status: StudentStatus
@@ -465,15 +465,8 @@ class NotificationRequest(BaseModel):
 
 # Universal login model (phone + password)
 class LoginRequest(BaseModel):
-    phone: int = Field(..., description="10-digit phone number")
+    phone: int = Field(..., description="User phone number")
     password: str = Field(..., min_length=1, description="User password")
-    
-    @field_validator('phone')
-    @classmethod
-    def validate_phone(cls, v):
-        if not (1000000000 <= v <= 9999999999):
-            raise ValueError('Phone number must be exactly 10 digits')
-        return v
 
 class BusDriverAssign(BaseModel):
     driver_id: Optional[str] = Field(None, description="Driver ID (UUID) or null to unassign")
