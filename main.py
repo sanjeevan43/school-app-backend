@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from app.core.config import get_settings
-from app.api.routes import router
 import uvicorn
 import logging
 
@@ -51,8 +50,12 @@ app.add_middleware(
     allow_headers=["*"],  # Allow all headers
 )
 
+from app.api.routes import router as main_router
+from app.api.notification_routes import router as notification_router
+
 # Include routers
-app.include_router(router, prefix="/api/v1")
+app.include_router(main_router, prefix="/api/v1")
+app.include_router(notification_router, prefix="/api/v1")
 
 # Root endpoint
 @app.get("/", include_in_schema=False)

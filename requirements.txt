@@ -9,3 +9,4 @@ PyMySQL==1.1.0
 cryptography
 python-dotenv==1.0.0
 requests==2.31.0
+firebase-admin==6.2.0
