@@ -13,7 +13,7 @@ async def get_status():
         "creds_found": notification_service.creds_path is not None
     }
 
-@router.post("/notifications/send", tags=["Notifications"])
+@router.post("/send-notification", tags=["Notifications"])
 async def send_notification(
     title: str = Body(...),
     body: str = Body(...),

@@ -649,6 +649,7 @@ async def create_route_stop(route_stop: RouteStopCreate):
         VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
         execute_query(query, (stop_id, route_stop.route_id, route_stop.stop_name,
+                             route_stop.latitude, route_stop.longitude,
                              target_order, target_order))
         
         # Normalize orders to ensure they are 1, 2, 3...
