@@ -1043,6 +1043,13 @@ async def delete_class(class_id: str):
         raise HTTPException(status_code=404, detail="Class not found")
     return {"message": "Class deleted successfully"}
 
+@router.get("/students/by-class/{class_id}", response_model=List[StudentResponse], tags=["Students"])
+async def get_students_by_class(class_id: str):
+    """Get all students in a specific class"""
+    query = "SELECT * FROM students WHERE class_id = %s ORDER BY name"
+    students = execute_query(query, (class_id,), fetch_all=True)
+    return students or []
+
 # =====================================================
 # STUDENT ENDPOINTS
 # =====================================================
@@ -1297,6 +1304,13 @@ async def get_trip(trip_id: str):
         raise HTTPException(status_code=404, detail="Trip not found")
     return trip
 
+@router.get("/trips/ongoing/all", response_model=List[TripResponse], tags=["Trips"])
+async def get_active_trips():
+    """Get all ongoing trips"""
+    query = "SELECT * FROM trips WHERE status = 'ONGOING' ORDER BY started_at DESC"
+    trips = execute_query(query, fetch_all=True)
+    return trips or []
+
 @router.put("/trips/{trip_id}", response_model=TripResponse, tags=["Trips"])
 async def update_trip(trip_id: str, trip_update: TripUpdate):
     """Update trip"""
@@ -1347,7 +1361,7 @@ async def create_error_log(error: ErrorHandlingCreate):
     try:
         error_id = str(uuid.uuid4())
         query = """
-        INSERT INTO error_handling (error_id, error_type, error_code, error_description)
+        INSERT INTO error_logs (error_id, error_type, error_code, error_description)
         VALUES (%s, %s, %s, %s)
         """
         execute_query(query, (error_id, error.error_type, error.error_code, error.error_description))
@@ -1360,14 +1374,14 @@ async def create_error_log(error: ErrorHandlingCreate):
 @router.get("/error-handling", response_model=List[ErrorHandlingResponse], tags=["Error Handling"])
 async def get_all_error_logs():
     """Get all error logs"""
-    query = "SELECT * FROM error_handling ORDER BY created_at DESC"
+    query = "SELECT * FROM error_logs ORDER BY created_at DESC"
     errors = execute_query(query, fetch_all=True)
     return errors or []
 
 @router.get("/error-handling/{error_id}", response_model=ErrorHandlingResponse, tags=["Error Handling"])
 async def get_error_log(error_id: str):
     """Get error log by ID"""
-    query = "SELECT * FROM error_handling WHERE error_id = %s"
+    query = "SELECT * FROM error_logs WHERE error_id = %s"
     error = execute_query(query, (error_id,), fetch_one=True)
     if not error:
         raise HTTPException(status_code=404, detail="Error log not found")
@@ -1399,7 +1413,7 @@ async def update_error_log(error_id: str, error_update: ErrorHandlingUpdate):
 @router.delete("/error-handling/{error_id}", tags=["Error Handling"])
 async def delete_error_log(error_id: str):
     """Delete error log"""
-    query = "DELETE FROM error_handling WHERE error_id = %s"
+    query = "DELETE FROM error_logs WHERE error_id = %s"
     result = execute_query(query, (error_id,))
     if result == 0:
         raise HTTPException(status_code=404, detail="Error log not found")
@@ -1533,6 +1547,20 @@ async def get_fcm_token(fcm_id: str):
     if not token:
         raise HTTPException(status_code=404, detail="FCM token not found")
     return token
+
+@router.get("/fcm-tokens/by-student/{student_id}", response_model=List[FCMTokenResponse], tags=["FCM Tokens"])
+async def get_fcm_tokens_by_student(student_id: str):
+    """Get all FCM tokens registered for a specific student"""
+    query = "SELECT * FROM fcm_tokens WHERE student_id = %s"
+    tokens = execute_query(query, (student_id,), fetch_all=True)
+    return tokens or []
+
+@router.get("/fcm-tokens/by-parent/{parent_id}", response_model=List[FCMTokenResponse], tags=["FCM Tokens"])
+async def get_fcm_tokens_by_parent(parent_id: str):
+    """Get all FCM tokens registered for a specific parent"""
+    query = "SELECT * FROM fcm_tokens WHERE parent_id = %s"
+    tokens = execute_query(query, (parent_id,), fetch_all=True)
+    return tokens or []
 
 @router.put("/fcm-tokens/{fcm_id}", response_model=FCMTokenResponse, tags=["FCM Tokens"])
 async def update_fcm_token(fcm_id: str, fcm_update: FCMTokenUpdate):
@@ -1865,4 +1893,28 @@ async def start_trip(trip_id: str):
     except Exception as e:
         logger.error(f"Start trip error: {e}")
         raise HTTPException(status_code=500, detail="Failed to start trip")
+
+@router.get("/buses/by-route/{route_id}", response_model=List[BusResponse], tags=["Buses"])
+async def get_buses_by_route(route_id: str):
+    """Get all buses assigned to a specific route"""
+    query = "SELECT * FROM buses WHERE route_id = %s"
+    buses = execute_query(query, (route_id,), fetch_all=True)
+    return buses or []
+
+@router.get("/dashboard/summary", tags=["Utility"])
+async def get_dashboard_summary():
+    """Get counts of all main entities for dashboard"""
+    try:
+        counts = {}
+        counts["admins"] = execute_query("SELECT COUNT(*) as count FROM admins", fetch_one=True)["count"]
+        counts["parents"] = execute_query("SELECT COUNT(*) as count FROM parents", fetch_one=True)["count"]
+        counts["drivers"] = execute_query("SELECT COUNT(*) as count FROM drivers", fetch_one=True)["count"]
+        counts["buses"] = execute_query("SELECT COUNT(*) as count FROM buses", fetch_one=True)["count"]
+        counts["routes"] = execute_query("SELECT COUNT(*) as count FROM routes", fetch_one=True)["count"]
+        counts["students"] = execute_query("SELECT COUNT(*) as count FROM students", fetch_one=True)["count"]
+        counts["ongoing_trips"] = execute_query("SELECT COUNT(*) as count FROM trips WHERE status = 'ONGOING'", fetch_one=True)["count"]
+        return counts
+    except Exception as e:
+        logger.error(f"Summary error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get summary")
 

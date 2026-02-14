@@ -492,11 +492,11 @@ class StudentStatusUpdate(BaseModel):
     status: StudentStatus = Field(..., description="New student status value (CURRENT, ALUMNI, DISCONTINUED, LONG_ABSENT)")
 
 class TransportStatusUpdate(BaseModel):
-    status: TransportStatus = Field(..., description="New transport status value (ACTIVE, TEMP_STOP, CANCELLED)")
+    status: TransportStatus = Field(..., description="New transport status value (ACTIVE, INACTIVE)")
 
 class CombinedStatusUpdate(BaseModel):
     student_status: Optional[StudentStatus] = Field(None, description="Student status (CURRENT, ALUMNI, DISCONTINUED, LONG_ABSENT)")
-    transport_status: Optional[TransportStatus] = Field(None, description="Transport status (ACTIVE, TEMP_STOP, CANCELLED)")
+    transport_status: Optional[TransportStatus] = Field(None, description="Transport status (ACTIVE, INACTIVE)")
 
 class TripStatusUpdate(BaseModel):
     status: TripStatus = Field(..., description="New trip status value")
