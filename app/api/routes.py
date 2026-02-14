@@ -1509,6 +1509,28 @@ async def get_students_by_route(route_id: str, active_only: bool = True):
     students = execute_query(query, (route_id, route_id), fetch_all=True)
     return students or []
 
+@router.get("/parents/by-route/{route_id}", response_model=List[ParentResponse], tags=["Parents"])
+async def get_parents_by_route(route_id: str):
+    """Get all parents who have students on a specific route"""
+    query = """
+    SELECT DISTINCT p.* FROM parents p
+    JOIN students s ON (p.parent_id = s.parent_id OR p.parent_id = s.s_parent_id)
+    WHERE s.pickup_route_id = %s OR s.drop_route_id = %s
+    ORDER BY p.name
+    """
+    parents = execute_query(query, (route_id, route_id), fetch_all=True)
+    return parents or []
+
+@router.get("/students/count/by-route/{route_id}", tags=["Students"])
+async def get_student_count_by_route(route_id: str):
+    """Get the total count of students on a specific route"""
+    query = """
+    SELECT COUNT(DISTINCT student_id) as student_count FROM students 
+    WHERE pickup_route_id = %s OR drop_route_id = %s
+    """
+    result = execute_query(query, (route_id, route_id), fetch_one=True)
+    return {"route_id": route_id, "student_count": result["student_count"] if result else 0}
+
 # =====================================================
 # FCM TOKEN ENDPOINTS
 # =====================================================
