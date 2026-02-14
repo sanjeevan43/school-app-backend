@@ -39,8 +39,7 @@ class StudentStatus(str, Enum):
 
 class TransportStatus(str, Enum):
     ACTIVE = "ACTIVE"
-    TEMP_STOP = "TEMP_STOP"
-    CANCELLED = "CANCELLED"
+    INACTIVE = "INACTIVE"
 
 class TripType(str, Enum):
     MORNING = "MORNING"

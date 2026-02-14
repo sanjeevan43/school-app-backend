@@ -1178,7 +1178,7 @@ async def patch_student_status(student_id: str, status_update: CombinedStatusUpd
     """PATCH: Update student status and/or transport status
     
     - student_status: CURRENT, ALUMNI, DISCONTINUED, LONG_ABSENT
-    - transport_status: ACTIVE, TEMP_STOP, CANCELLED
+    - transport_status: ACTIVE, INACTIVE
     """
     update_fields = []
     values = []
@@ -1207,7 +1207,7 @@ async def patch_student_status(student_id: str, status_update: CombinedStatusUpd
 
 @router.put("/students/{student_id}/transport-status", response_model=StudentResponse, tags=["Students"])
 async def update_student_transport_status(student_id: str, status_update: TransportStatusUpdate):
-    """Update student transport status only (ACTIVE, TEMP_STOP, CANCELLED)"""
+    """Update student transport status only (ACTIVE, INACTIVE)"""
     query = "UPDATE students SET transport_status = %s, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
     result = execute_query(query, (status_update.status.value, student_id))
     if result == 0:
