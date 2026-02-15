@@ -656,9 +656,26 @@ async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
         if result == 0:
             raise HTTPException(status_code=404, detail="Route stop not found")
         
-        # If order was updated, reorder all stops in this route
-        if stop_update.pickup_stop_order is not None:
-             _reorder_route_stops(old_stop['route_id'])
+        # If order was updated, handle the shifting of other stops
+        if stop_update.pickup_stop_order is not None and stop_update.pickup_stop_order != old_stop['pickup_stop_order']:
+            new_order = stop_update.pickup_stop_order
+            old_order = old_stop['pickup_stop_order']
+            
+            if new_order < old_order:
+                # Moving up: Shift stops in between DOWN
+                execute_query(
+                    "UPDATE route_stops SET pickup_stop_order = pickup_stop_order + 1, drop_stop_order = drop_stop_order + 1 WHERE route_id = %s AND pickup_stop_order >= %s AND pickup_stop_order < %s AND stop_id != %s",
+                    (old_stop['route_id'], new_order, old_order, stop_id)
+                )
+            else:
+                # Moving down: Shift stops in between UP
+                execute_query(
+                    "UPDATE route_stops SET pickup_stop_order = pickup_stop_order - 1, drop_stop_order = drop_stop_order - 1 WHERE route_id = %s AND pickup_stop_order > %s AND pickup_stop_order <= %s AND stop_id != %s",
+                    (old_stop['route_id'], old_order, new_order, stop_id)
+                )
+            
+            # Normalize all to be sure
+            _reorder_route_stops(old_stop['route_id'])
         
         # Trigger cascade updates
         new_data = stop_update.dict(exclude_unset=True)
