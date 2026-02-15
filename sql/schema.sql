@@ -169,3 +169,12 @@ CREATE TABLE IF NOT EXISTS error_logs (
     error_description VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Driver Live Locations Table
+CREATE TABLE IF NOT EXISTS driver_live_locations (
+    driver_id VARCHAR(36) PRIMARY KEY,
+    latitude DECIMAL(10, 7) NOT NULL,
+    longitude DECIMAL(10, 7) NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (driver_id) REFERENCES drivers(driver_id) ON DELETE CASCADE
+);

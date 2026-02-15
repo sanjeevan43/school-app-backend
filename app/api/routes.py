@@ -1920,3 +1920,49 @@ async def get_dashboard_summary():
         logger.error(f"Summary error: {e}")
         raise HTTPException(status_code=500, detail="Failed to get summary")
 
+# =====================================================
+# DRIVER LIVE LOCATION ENDPOINTS
+# =====================================================
+
+@router.put("/drivers/{driver_id}/location", tags=["Drivers"])
+async def update_driver_location(driver_id: str, location: DriverLocationUpdate):
+    """Update driver's real-time location"""
+    try:
+        # Check if driver exists
+        driver_check = "SELECT driver_id FROM drivers WHERE driver_id = %s"
+        if not execute_query(driver_check, (driver_id,), fetch_one=True):
+            raise HTTPException(status_code=404, detail="Driver not found")
+
+        # Update or Insert live location
+        query = """
+        INSERT INTO driver_live_locations (driver_id, latitude, longitude, updated_at)
+        VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+        ON DUPLICATE KEY UPDATE 
+            latitude = VALUES(latitude),
+            longitude = VALUES(longitude),
+            updated_at = CURRENT_TIMESTAMP
+        """
+        execute_query(query, (driver_id, location.latitude, location.longitude))
+        return {"message": "Location updated successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating driver location: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update location")
+
+@router.get("/drivers/{driver_id}/location", response_model=DriverLocationResponse, tags=["Drivers"])
+async def get_driver_location(driver_id: str):
+    """Get a specific driver's live location"""
+    query = "SELECT * FROM driver_live_locations WHERE driver_id = %s"
+    location = execute_query(query, (driver_id,), fetch_one=True)
+    if not location:
+        raise HTTPException(status_code=404, detail="Live location not found for this driver")
+    return location
+
+@router.get("/drivers/locations/all", response_model=List[DriverLocationResponse], tags=["Drivers"])
+async def get_all_driver_locations():
+    """Get all drivers' live locations (useful for admin map)"""
+    query = "SELECT * FROM driver_live_locations"
+    locations = execute_query(query, fetch_all=True)
+    return locations or []
+

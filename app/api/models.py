@@ -451,12 +451,23 @@ class FCMTokenResponse(BaseModel):
     
     model_config = ConfigDict(from_attributes=True)
 
-# Bus Location Models
 class BusLocationUpdate(BaseModel):
     trip_id: str
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
     timestamp: Optional[datetime] = None
+
+class DriverLocationUpdate(BaseModel):
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
+
+class DriverLocationResponse(BaseModel):
+    driver_id: str
+    latitude: float
+    longitude: float
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 class NotificationRequest(BaseModel):
     trip_id: str
