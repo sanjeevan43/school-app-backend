@@ -4,9 +4,11 @@ from typing import Optional, List
 from app.api.models import *
 from app.core.database import execute_query
 from app.core.auth import create_access_token
+import logging
 from datetime import datetime
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 @router.post("/auth/login", response_model=Token, tags=["Authentication"])
 async def login(login_data: LoginRequest):
@@ -122,6 +124,8 @@ async def broadcast_drivers(
     results = []
     for d in drivers:
         if d['fcm_token']:
+            # Log the send action as requested
+            logger.info(f"Sending notification: {{'title': '{title}', 'body': '{body}', 'recipientType': 'driver', 'messageType': 'text', 'token': '{d['fcm_token'][:20]}...'}}")
             res = await notification_service.send_to_device(title, body, d['fcm_token'], recipient_type="driver")
             results.append(res)
             
@@ -142,6 +146,8 @@ async def broadcast_parents(
     
     results = []
     for t in tokens:
+        # Log the send action as requested
+        logger.info(f"Sending notification: {{'title': '{title}', 'body': '{body}', 'recipientType': 'parent', 'messageType': 'text', 'token': '{t['fcm_token'][:20]}...'}}")
         res = await notification_service.send_to_device(title, body, t['fcm_token'], recipient_type="parent")
         results.append(res)
         
@@ -158,7 +164,6 @@ async def send_student_notification(
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
-    from app.core.database import execute_query
     tokens = execute_query("SELECT fcm_token FROM fcm_tokens WHERE student_id = %s", (student_id,), fetch_all=True)
     if not tokens:
         raise HTTPException(status_code=404, detail="No FCM tokens found for this student")
@@ -181,7 +186,6 @@ async def send_parent_notification(
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
-    from app.core.database import execute_query
     tokens = execute_query("SELECT fcm_token FROM fcm_tokens WHERE parent_id = %s", (parent_id,), fetch_all=True)
     if not tokens:
         raise HTTPException(status_code=404, detail="No FCM tokens found for this parent")
@@ -204,7 +208,6 @@ async def send_route_notification(
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
-    from app.core.database import execute_query
     query = """
     SELECT DISTINCT ft.fcm_token 
     FROM fcm_tokens ft
