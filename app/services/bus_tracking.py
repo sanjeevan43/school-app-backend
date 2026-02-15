@@ -1,53 +1,16 @@
-import requests
-import json
 import logging
+import math
+import json
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
-import math
 from app.core.database import execute_query
-from app.core.config import get_settings
+from app.notification_api.service import notification_service
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
-
-class FCMService:
-    def __init__(self, server_key: str = None):
-        self.server_key = server_key or settings.FCM_SERVER_KEY
-        self.fcm_url = "https://fcm.googleapis.com/fcm/send"
-        
-    def send_notification(self, tokens: List[str], title: str, body: str, data: Dict = None):
-        """Send FCM notification to multiple tokens"""
-        if not tokens:
-            return {"success": False, "message": "No tokens provided"}
-            
-        headers = {
-            "Authorization": f"key={self.server_key}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "registration_ids": tokens,
-            "notification": {
-                "title": title,
-                "body": body,
-                "sound": "default"
-            },
-            "data": data or {}
-        }
-        
-        try:
-            response = requests.post(self.fcm_url, headers=headers, json=payload)
-            return {
-                "success": response.status_code == 200,
-                "response": response.json() if response.status_code == 200 else response.text
-            }
-        except Exception as e:
-            logger.error(f"FCM notification error: {e}")
-            return {"success": False, "error": str(e)}
 
 class BusTrackingService:
     def __init__(self):
-        self.fcm_service = FCMService()
+        pass
         
     def calculate_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """Calculate distance between two points in kilometers"""
@@ -107,7 +70,7 @@ class BusTrackingService:
         tokens = execute_query(query, tuple(student_ids), fetch_all=True)
         return [token['fcm_token'] for token in tokens if token['fcm_token']]
     
-    def update_bus_location(self, trip_id: str, latitude: float, longitude: float):
+    async def update_bus_location(self, trip_id: str, latitude: float, longitude: float):
         """Automatic bus tracking - handle stop progression and trip completion"""
         try:
             # Get trip details
@@ -173,11 +136,12 @@ class BusTrackingService:
                         if parent_tokens:
                             title = "Bus Arrival Update"
                             body = f"The bus with registration {trip['registration_number']} has reached {stop['stop_name']}."
-                            self.fcm_service.send_notification(parent_tokens, title, body, {
-                                "trip_id": trip_id,
-                                "stop_id": stop['stop_id'],
-                                "stop_name": stop['stop_name']
-                            })
+                            for token in parent_tokens:
+                                await notification_service.send_to_device(
+                                    title, body, token, 
+                                    recipient_type="parent",
+                                    message_type="arrival_update"
+                                )
                             logger.info(f"Sent notifications to {len(parent_tokens)} parents for stop {stop['stop_name']}")
 
                         # Check if this is the last stop - auto complete trip
@@ -188,9 +152,14 @@ class BusTrackingService:
                             )
                             # Notify start of trip completion
                             if parent_tokens:
-                                self.fcm_service.send_notification(parent_tokens, "Trip Completed", 
-                                                                 f"The bus has reached the final stop: {stop['stop_name']}.", 
-                                                                 {"trip_id": trip_id})
+                                for token in parent_tokens:
+                                    await notification_service.send_to_device(
+                                        "Trip Completed",
+                                        f"The bus has reached the final stop: {stop['stop_name']}.",
+                                        token,
+                                        recipient_type="parent",
+                                        message_type="trip_completed"
+                                    )
                             
                             trip_completed = True
                             break

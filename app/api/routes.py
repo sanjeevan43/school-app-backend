@@ -10,7 +10,8 @@ from app.core.database import get_db, execute_query
 from app.api.models import *
 from app.core.auth import create_access_token
 from app.core.encryption import encrypt_data, decrypt_data
-from app.services.bus_tracking import bus_tracking_service, fcm_service
+from app.services.bus_tracking import bus_tracking_service
+from app.notification_api.service import notification_service
 from app.services.cascade_updates import cascade_service
 
 router = APIRouter()
@@ -1766,7 +1767,7 @@ async def delete_fcm_token(fcm_id: str):
 async def update_bus_location(location_data: BusLocationUpdate):
     """Automatic bus tracking - handles stop progression and trip completion"""
     try:
-        result = bus_tracking_service.update_bus_location(
+        result = await bus_tracking_service.update_bus_location(
             trip_id=location_data.trip_id,
             latitude=location_data.latitude,
             longitude=location_data.longitude
@@ -1817,18 +1818,21 @@ async def send_custom_notification(notification: NotificationRequest):
             parent_tokens = bus_tracking_service.get_parent_tokens_for_students(student_ids)
             
             if parent_tokens:
-                result = fcm_service.send_notification(
-                    tokens=parent_tokens,
-                    title="Bus Notification",
-                    body=notification.message,
-                    data={"trip_id": notification.trip_id, "custom": "true"}
-                )
+                results = []
+                for token in parent_tokens:
+                    res = await notification_service.send_to_device(
+                        title="Bus Notification",
+                        body=notification.message,
+                        token=token,
+                        recipient_type="parent",
+                        message_type="custom"
+                    )
+                    results.append(res)
                 
                 return {
                     "success": True,
-                    "parents_notified": len(parent_tokens),
-                    "students_count": len(students),
-                    "notification_result": result
+                    "parents_notified": len(results),
+                    "students_count": len(students)
                 }
         
         return {"success": False, "message": "No parents to notify"}

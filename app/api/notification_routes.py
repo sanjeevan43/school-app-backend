@@ -131,14 +131,22 @@ async def broadcast_drivers(
 async def broadcast_parents(
     title: str = Body(..., description="The title of the notification"),
     body: str = Body(..., description="The message body"),
+    message_type: str = Body("text", alias="messageType", description="Type of message (default: text)"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to all parents"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
-    # Fetch all unique parent tokens from database
-    tokens = execute_query("SELECT DISTINCT fcm_token FROM fcm_tokens WHERE parent_id IS NOT NULL", fetch_all=True)
+    # Fetch all unique parent tokens from database for ACTIVE parents only
+    query = """
+    SELECT DISTINCT ft.fcm_token 
+    FROM fcm_tokens ft
+    JOIN parents p ON ft.parent_id = p.parent_id
+    WHERE ft.parent_id IS NOT NULL 
+    AND p.parents_active_status = 'ACTIVE'
+    """
+    tokens = execute_query(query, fetch_all=True)
     
     # Extract tokens
     all_tokens = [t['fcm_token'] for t in tokens if t['fcm_token']]
@@ -146,7 +154,7 @@ async def broadcast_parents(
     results = []
     for t_val in all_tokens:
         # Defaulting to parent/text for this specific broadcast
-        res = await notification_service.send_to_device(title, body, t_val, recipient_type="parent", message_type="text")
+        res = await notification_service.send_to_device(title, body, t_val, recipient_type="parent", message_type=message_type)
         results.append(res)
         
     return {"success": True, "delivered_count": len(results), "total_found": len(tokens), "message": f"Broadcast sent to {len(results)} devices"}

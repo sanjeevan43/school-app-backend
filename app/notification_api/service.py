@@ -73,6 +73,8 @@ class FCMService:
                 notification=messaging.Notification(title=title, body=body),
                 data={
                     'type': 'admin_notification',
+                    'title': title,
+                    'body': body,
                     'messageType': message_type,
                     'recipientType': topic,
                     'timestamp': str(int(time.time() * 1000)),
@@ -104,6 +106,8 @@ class FCMService:
                 notification=messaging.Notification(title=title, body=body),
                 data={
                     'type': 'admin_notification',
+                    'title': title,
+                    'body': body,
                     'messageType': message_type,
                     'recipientType': recipient_type,
                     'timestamp': str(int(time.time() * 1000)),
