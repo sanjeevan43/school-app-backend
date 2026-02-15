@@ -767,13 +767,13 @@ async def create_bus(bus: BusCreate):
         query = """
         INSERT INTO buses (bus_id, registration_number, driver_id, route_id, vehicle_type,
                           bus_brand, bus_model, seating_capacity, rc_expiry_date, fc_expiry_date,
-                          rc_book_url, fc_certificate_url)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                          rc_book_url, fc_certificate_url, bus_name)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         execute_query(query, (bus_id, bus.registration_number, bus.driver_id, bus.route_id,
                              bus.vehicle_type, bus.bus_brand, bus.bus_model, bus.seating_capacity,
                              bus.rc_expiry_date, bus.fc_expiry_date, bus.rc_book_url, 
-                             bus.fc_certificate_url))
+                             bus.fc_certificate_url, bus.bus_name))
         
         return await get_bus(bus_id)
     except Exception as e:

@@ -131,9 +131,6 @@ async def broadcast_drivers(
 async def broadcast_parents(
     title: str = Body(..., description="The title of the notification"),
     body: str = Body(..., description="The message body"),
-    recipient_type: str = Body("parent", alias="recipientType", description="Type of recipient (default: parent)"),
-    message_type: str = Body("text", alias="messageType", description="Type of message (default: text)"),
-    token: Optional[str] = Body(None, description="Optional specific token to include in broadcast (useful for testing)"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to all parents"""
@@ -143,14 +140,13 @@ async def broadcast_parents(
     # Fetch all unique parent tokens from database
     tokens = execute_query("SELECT DISTINCT fcm_token FROM fcm_tokens WHERE parent_id IS NOT NULL", fetch_all=True)
     
-    # If a specific token was passed in the request body, ensure it's included in the list
+    # Extract tokens
     all_tokens = [t['fcm_token'] for t in tokens if t['fcm_token']]
-    if token and token not in all_tokens:
-        all_tokens.append(token)
     
     results = []
     for t_val in all_tokens:
-        res = await notification_service.send_to_device(title, body, t_val, recipient_type=recipient_type, message_type=message_type)
+        # Defaulting to parent/text for this specific broadcast
+        res = await notification_service.send_to_device(title, body, t_val, recipient_type="parent", message_type="text")
         results.append(res)
         
     return {"success": True, "delivered_count": len(results), "total_found": len(tokens), "message": f"Broadcast sent to {len(results)} devices"}

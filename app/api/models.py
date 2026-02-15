@@ -192,6 +192,7 @@ class BusBase(BaseModel):
     fc_expiry_date: Optional[date] = None
     rc_book_url: Optional[str] = Field(None, max_length=255)
     fc_certificate_url: Optional[str] = Field(None, max_length=255)
+    bus_name: Optional[str] = Field(None, max_length=50)
 
 class BusCreate(BusBase):
     pass
@@ -209,6 +210,7 @@ class BusUpdate(BaseModel):
     rc_book_url: Optional[str] = Field(None, max_length=255)
     fc_certificate_url: Optional[str] = Field(None, max_length=255)
     status: Optional[BusStatus] = None
+    bus_name: Optional[str] = Field(None, max_length=50)
 
 class BusResponse(BaseModel):
     bus_id: str
@@ -224,6 +226,7 @@ class BusResponse(BaseModel):
     rc_book_url: Optional[str] = Field(None, max_length=255)
     fc_certificate_url: Optional[str] = Field(None, max_length=255)
     status: BusStatus
+    bus_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
