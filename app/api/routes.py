@@ -1524,9 +1524,27 @@ async def get_student_count_by_route(route_id: str):
 
 @router.post("/fcm-tokens", response_model=FCMTokenResponse, tags=["FCM Tokens"])
 async def create_fcm_token(fcm_token: FCMTokenCreate):
-    """Create or update FCM token"""
+    """Create or update FCM token with Force Logout for single device login"""
     try:
         fcm_id = str(uuid.uuid4())
+        
+        # Logic for Parent Single Device Login (Force Logout)
+        if fcm_token.parent_id:
+            # Check if parent already has an FCM token
+            old_token_query = "SELECT fcm_token FROM fcm_tokens WHERE parent_id = %s"
+            old_token_data = execute_query(old_token_query, (fcm_token.parent_id,), fetch_one=True)
+            
+            # If old token exists and is different from the new one
+            if old_token_data and old_token_data['fcm_token'] != fcm_token.fcm_token:
+                logger.info(f"Force logging out old device for parent: {fcm_token.parent_id}")
+                # 1. Send FCM notification to old token with logout command
+                await notification_service.send_force_logout(old_token_data['fcm_token'])
+                
+                # 2. Delete old token from database to maintain single device rule
+                delete_query = "DELETE FROM fcm_tokens WHERE parent_id = %s"
+                execute_query(delete_query, (fcm_token.parent_id,))
+
+        # 3. Save/Update new token
         query = """
         INSERT INTO fcm_tokens (fcm_id, fcm_token, student_id, parent_id)
         VALUES (%s, %s, %s, %s)
@@ -1537,10 +1555,14 @@ async def create_fcm_token(fcm_token: FCMTokenCreate):
         """
         execute_query(query, (fcm_id, fcm_token.fcm_token, fcm_token.student_id, fcm_token.parent_id))
         
-        return await get_fcm_token(fcm_id)
+        # Get the actual ID of the token (either new or updated)
+        # If it was updated, we need to find the ID by token
+        final_token = execute_query("SELECT fcm_id FROM fcm_tokens WHERE fcm_token = %s", (fcm_token.fcm_token,), fetch_one=True)
+        return await get_fcm_token(final_token['fcm_id'])
     except Exception as e:
         logger.error(f"Create FCM token error: {e}")
-        raise HTTPException(status_code=400, detail="Failed to create FCM token")
+        raise HTTPException(status_code=400, detail=f"Failed to create FCM token: {str(e)}")
+
 
 @router.get("/fcm-tokens", response_model=List[FCMTokenResponse], tags=["FCM Tokens"])
 async def get_all_fcm_tokens():

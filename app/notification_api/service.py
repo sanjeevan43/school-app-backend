@@ -123,5 +123,33 @@ class FCMService:
             logger.error(f"FCM Device Send Error: {error}")
             return {"success": False, "error": str(error)}
 
+    async def send_force_logout(self, token: str):
+        try:
+            if not self.initialized:
+                success, error = self.init_firebase()
+                if not success:
+                    return {"success": False, "error": f"Firebase not initialized: {error}"}
+
+            message = messaging.Message(
+                token=token,
+                notification=messaging.Notification(
+                    title="Session Expired",
+                    body="You have been logged in on another device"
+                ),
+                data={
+                    "type": "FORCE_LOGOUT",
+                    "messageType": "text",
+                    "source": "system"
+                },
+                android=messaging.AndroidConfig(priority='high')
+            )
+
+            response = messaging.send(message)
+            return {"success": True, "messageId": response}
+        except Exception as error:
+            logger.error(f"FCM Force Logout Error: {error}")
+            return {"success": False, "error": str(error)}
+
+
 # Global instance
 notification_service = FCMService()
