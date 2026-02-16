@@ -239,4 +239,3 @@ class BusTrackingService:
 
 # Global instances
 bus_tracking_service = BusTrackingService()
-fcm_service = FCMService()

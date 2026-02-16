@@ -1905,12 +1905,15 @@ async def start_trip(trip_id: str):
             student_ids = [s['student_id'] for s in students]
             parent_tokens = bus_tracking_service.get_parent_tokens_for_students(student_ids)
             if parent_tokens:
-                fcm_service.send_notification(
-                    tokens=parent_tokens,
-                    title="Bus Trip Started",
-                    body=f"The bus trip for route '{trip_data['route_id']}' has started.",
-                    data={"trip_id": trip_id, "status": "started"}
-                )
+                for token in parent_tokens:
+                    await notification_service.send_to_device(
+                        title="Bus Trip Started",
+                        body=f"The bus trip for route '{trip_data['route_id']}' has started.",
+                        token=token,
+                        recipient_type="parent",
+                        message_type="trip_started"
+                    )
+
 
         return trip_data
     except Exception as e:
