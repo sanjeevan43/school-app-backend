@@ -62,17 +62,20 @@ class FCMService:
             logger.error(f"Firebase Error during init: {err_msg}")
             return False, err_msg
 
-    async def send_to_topic(self, title: str, body: str, topic: str = 'all_users', message_type: str = 'audio'):
+    async def send_to_topic(self, title: str, body: str, topic: str = 'all_users', message_type: str = 'audio', notification_type: str = None):
         try:
             if not self.initialized:
                 success, error = self.init_firebase()
                 if not success:
                     return {"success": False, "error": f"Firebase not initialized: {error}"}
 
+            # Use notification_type if provided, otherwise use message_type
+            final_type = notification_type or message_type or 'admin_notification'
+
             message = messaging.Message(
                 notification=messaging.Notification(title=title, body=body),
                 data={
-                    'type': 'admin_notification',
+                    'type': final_type,
                     'title': title,
                     'body': body,
                     'messageType': message_type,
@@ -81,6 +84,7 @@ class FCMService:
                     'source': 'admin_panel',
                     'message': body
                 },
+
                 android=messaging.AndroidConfig(
                     priority='high',
                     ttl=3600
@@ -94,18 +98,21 @@ class FCMService:
             logger.error(f"FCM Topic Send Error: {error}")
             return {"success": False, "error": str(error)}
 
-    async def send_to_device(self, title: str, body: str, token: str, recipient_type: str = 'parent', message_type: str = 'audio'):
+    async def send_to_device(self, title: str, body: str, token: str, recipient_type: str = 'parent', message_type: str = 'audio', notification_type: str = None):
         try:
             if not self.initialized:
                 success, error = self.init_firebase()
                 if not success:
                     return {"success": False, "error": f"Firebase not initialized: {error}"}
 
+            # Use notification_type if provided, otherwise use message_type
+            final_type = notification_type or message_type or 'admin_notification'
+
             message = messaging.Message(
                 token=token,
                 notification=messaging.Notification(title=title, body=body),
                 data={
-                    'type': 'admin_notification',
+                    'type': final_type,
                     'title': title,
                     'body': body,
                     'messageType': message_type,
@@ -114,6 +121,7 @@ class FCMService:
                     'source': 'admin_panel',
                     'message': body
                 },
+
                 android=messaging.AndroidConfig(priority='high')
             )
 

@@ -75,16 +75,16 @@ async def send_notification(
     body: str = Body(...),
     topic: str = Body("all_users"),
     message_type: str = Body("audio"),
+    notification_type: Optional[str] = Body(None),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to a specific topic"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
-    result = await notification_service.send_to_topic(title, body, topic, message_type)
+    result = await notification_service.send_to_topic(title, body, topic, message_type, notification_type)
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=result.get("error"))
-    
     return result
 
 @router.post("/notifications/send-device", tags=["Notifications"])
@@ -94,16 +94,16 @@ async def send_device_notification(
     token: str = Body(...),
     recipient_type: str = Body("parent"),
     message_type: str = Body("audio"),
+    notification_type: Optional[str] = Body(None),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to a specific device token"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
-    result = await notification_service.send_to_device(title, body, token, recipient_type, message_type)
+    result = await notification_service.send_to_device(title, body, token, recipient_type, message_type, notification_type)
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=result.get("error"))
-    
     return result
 
 @router.post("/notifications/broadcast/drivers", tags=["Notifications"])
@@ -111,58 +111,45 @@ async def broadcast_drivers(
     title: str = Body(...),
     body: str = Body(...),
     message_type: str = Body("audio"),
+    notification_type: Optional[str] = Body(None),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to all drivers"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
-    # Fetch all driver tokens
     drivers = execute_query("SELECT fcm_token FROM drivers WHERE fcm_token IS NOT NULL AND status = 'ACTIVE'", fetch_all=True)
-    
     results = []
-    # Use set to avoid duplicate notifications if same token is stored multiple times
     driver_tokens = {d['fcm_token'] for d in drivers if d['fcm_token']}
     for token in driver_tokens:
-        res = await notification_service.send_to_device(title, body, token, recipient_type="driver", message_type=message_type)
+        res = await notification_service.send_to_device(title, body, token, recipient_type="driver", message_type=message_type, notification_type=notification_type)
         results.append(res)
-            
     return {"success": True, "delivered_count": len(results), "total_found": len(drivers)}
-
-
 
 @router.post("/notifications/broadcast/parents", tags=["Notifications"])
 async def broadcast_parents(
     title: str = Body(..., description="The title of the notification"),
     body: str = Body(..., description="The message body"),
     message_type: str = Body("audio", alias="messageType", description="Type of message (default: audio)"),
+    notification_type: Optional[str] = Body(None, alias="type", description="Explicit notification type (e.g. BROADCAST)"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to all parents"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
-    # Fetch all unique parent tokens from database for ACTIVE parents only
     query = """
-    SELECT DISTINCT ft.fcm_token 
-    FROM fcm_tokens ft
+    SELECT DISTINCT ft.fcm_token FROM fcm_tokens ft
     JOIN parents p ON ft.parent_id = p.parent_id
-    WHERE ft.parent_id IS NOT NULL 
-    AND p.parents_active_status = 'ACTIVE'
+    WHERE ft.parent_id IS NOT NULL AND p.parents_active_status = 'ACTIVE'
     """
     tokens = execute_query(query, fetch_all=True)
-    
-    # Extract tokens
     all_tokens = [t['fcm_token'] for t in tokens if t['fcm_token']]
-    
     results = []
     for t_val in set(all_tokens):
-        # Defaulting to parent/text for this specific broadcast
-        res = await notification_service.send_to_device(title, body, t_val, recipient_type="parent", message_type=message_type)
+        res = await notification_service.send_to_device(title, body, t_val, recipient_type="parent", message_type=message_type, notification_type=notification_type)
         results.append(res)
-
-        
-    return {"success": True, "delivered_count": len(results), "total_found": len(tokens), "message": f"Broadcast sent to {len(results)} devices"}
+    return {"success": True, "delivered_count": len(results), "total_found": len(tokens)}
 
 @router.post("/notifications/student/{student_id}", tags=["Notifications"])
 async def send_student_notification(
@@ -170,6 +157,7 @@ async def send_student_notification(
     title: str = Body(...),
     body: str = Body(...),
     message_type: str = Body("audio"),
+    notification_type: Optional[str] = Body(None),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to all FCM tokens associated with a student"""
@@ -183,10 +171,8 @@ async def send_student_notification(
     results = []
     unique_tokens = {t['fcm_token'] for t in tokens if t['fcm_token']}
     for t_val in unique_tokens:
-        res = await notification_service.send_to_device(title, body, t_val, recipient_type="student", message_type=message_type)
+        res = await notification_service.send_to_device(title, body, t_val, recipient_type="student", message_type=message_type, notification_type=notification_type)
         results.append(res)
-
-    
     return {"success": True, "details": results}
 
 @router.post("/notifications/parent/{parent_id}", tags=["Notifications"])
@@ -195,6 +181,7 @@ async def send_parent_notification(
     title: str = Body(...),
     body: str = Body(...),
     message_type: str = Body("audio"),
+    notification_type: Optional[str] = Body(None),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to all FCM tokens associated with a parent"""
@@ -203,7 +190,6 @@ async def send_parent_notification(
     
     tokens = execute_query("SELECT fcm_token FROM fcm_tokens WHERE parent_id = %s", (parent_id,), fetch_all=True)
     if not tokens:
-        # Check parent table to be sure
         parent_check = execute_query("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,), fetch_one=True)
         if not parent_check:
             raise HTTPException(status_code=404, detail="Parent not found")
@@ -212,10 +198,8 @@ async def send_parent_notification(
     results = []
     unique_tokens = {t['fcm_token'] for t in tokens if t['fcm_token']}
     for t_val in unique_tokens:
-        res = await notification_service.send_to_device(title, body, t_val, recipient_type="parent", message_type=message_type)
+        res = await notification_service.send_to_device(title, body, t_val, recipient_type="parent", message_type=message_type, notification_type=notification_type)
         results.append(res)
-
-    
     return {"success": True, "details": results}
 
 @router.post("/notifications/route/{route_id}", tags=["Notifications"])
@@ -224,6 +208,7 @@ async def send_route_notification(
     title: str = Body(...),
     body: str = Body(...),
     message_type: str = Body("audio"),
+    notification_type: Optional[str] = Body(None),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to everyone (parents/students) on a specific route"""
@@ -231,8 +216,7 @@ async def send_route_notification(
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     query = """
-    SELECT DISTINCT ft.fcm_token 
-    FROM fcm_tokens ft
+    SELECT DISTINCT ft.fcm_token FROM fcm_tokens ft
     JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
     WHERE s.pickup_route_id = %s OR s.drop_route_id = %s
     """
@@ -243,9 +227,9 @@ async def send_route_notification(
     results = []
     unique_tokens = {t['fcm_token'] for t in tokens if t['fcm_token']}
     for t_val in unique_tokens:
-        res = await notification_service.send_to_device(title, body, t_val, recipient_type="route", message_type=message_type)
+        res = await notification_service.send_to_device(title, body, t_val, recipient_type="route", message_type=message_type, notification_type=notification_type)
         results.append(res)
-    
     return {"success": True, "count": len(results)}
+
 
 
