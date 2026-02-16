@@ -36,6 +36,8 @@ class StudentStatus(str, Enum):
     ALUMNI = "ALUMNI"
     DISCONTINUED = "DISCONTINUED"
     LONG_ABSENT = "LONG_ABSENT"
+    ACTIVE = "ACTIVE"
+
 
 class TransportStatus(str, Enum):
     ACTIVE = "ACTIVE"
