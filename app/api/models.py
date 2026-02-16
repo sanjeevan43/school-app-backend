@@ -7,12 +7,16 @@ from enum import Enum
 class UserStatus(str, Enum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"
+    ALL = "ALL"
+
 
 class DriverStatus(str, Enum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"
     SUSPENDED = "SUSPENDED"
     RESIGNED = "RESIGNED"
+    ALL = "ALL"
+
 
 class BusStatus(str, Enum):
     ACTIVE = "ACTIVE"
@@ -20,6 +24,8 @@ class BusStatus(str, Enum):
     MAINTENANCE = "MAINTENANCE"
     SCRAP = "SCRAP"
     SPARE = "SPARE"
+    ALL = "ALL"
+
 
 class UserType(str, Enum):
     ADMIN = "admin"
@@ -37,11 +43,15 @@ class StudentStatus(str, Enum):
     DISCONTINUED = "DISCONTINUED"
     LONG_ABSENT = "LONG_ABSENT"
     ACTIVE = "ACTIVE"
+    ALL = "ALL"
+
 
 
 class TransportStatus(str, Enum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"
+    ALL = "ALL"
+
 
 class TripType(str, Enum):
     MORNING = "MORNING"
@@ -53,6 +63,12 @@ class TripStatus(str, Enum):
     PAUSED = "PAUSED"
     COMPLETED = "COMPLETED"
     CANCELED = "CANCELED"
+    ALL = "ALL"
+
+class ActiveFilter(str, Enum):
+    ALL = "ALL"
+    ACTIVE_ONLY = "ACTIVE_ONLY"
+
 
 # Admin Models
 class AdminBase(BaseModel):

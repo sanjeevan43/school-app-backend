@@ -101,11 +101,16 @@ async def create_admin(admin: AdminCreate):
         raise HTTPException(status_code=400, detail="Failed to create admin")
 
 @router.get("/admins", response_model=List[AdminResponse], tags=["Admins"])
-async def get_all_admins():
+async def get_all_admins(status: UserStatus = UserStatus.ALL):
     """Get all admins"""
-    query = "SELECT * FROM admins ORDER BY created_at DESC"
-    admins = execute_query(query, fetch_all=True)
+    if status == UserStatus.ALL:
+        query = "SELECT * FROM admins ORDER BY created_at DESC"
+        admins = execute_query(query, fetch_all=True)
+    else:
+        query = "SELECT * FROM admins WHERE status = %s ORDER BY created_at DESC"
+        admins = execute_query(query, (status.value,), fetch_all=True)
     return admins or []
+
 
 @router.get("/admins/{admin_id}", response_model=AdminResponse, tags=["Admins"])
 async def get_admin(admin_id: str):
@@ -184,14 +189,15 @@ async def create_parent(parent: ParentCreate):
         raise HTTPException(status_code=400, detail=f"Failed to create parent: {str(e)}")
 
 @router.get("/parents", response_model=List[ParentResponse], tags=["Parents"])
-async def get_all_parents(active_only: bool = False):
-    """Get all parents, defaults to active only"""
-    if active_only:
+async def get_all_parents(active_filter: ActiveFilter = ActiveFilter.ALL):
+    """Get all parents, defaults to ALL"""
+    if active_filter == ActiveFilter.ACTIVE_ONLY:
         query = "SELECT * FROM parents WHERE parents_active_status = 'ACTIVE' ORDER BY created_at DESC"
     else:
         query = "SELECT * FROM parents ORDER BY created_at DESC"
     parents = execute_query(query, fetch_all=True)
     return parents or []
+
 
 @router.get("/parents/{parent_id}", response_model=ParentResponse, tags=["Parents"])
 async def get_parent(parent_id: str):
@@ -381,18 +387,25 @@ async def create_driver(driver: DriverCreate):
         raise HTTPException(status_code=400, detail="Failed to create driver")
 
 @router.get("/drivers", response_model=List[DriverResponse], tags=["Drivers"])
-async def get_all_drivers(status: Optional[DriverStatus] = None, active_only: bool = False):
-    """Get all drivers, optionally filtered by status. Use active_only=True to quickly get ACTIVE drivers."""
-    if status:
-        query = "SELECT * FROM drivers WHERE status = %s ORDER BY name"
-        drivers = execute_query(query, (status.value,), fetch_all=True)
-    elif active_only:
-        query = "SELECT * FROM drivers WHERE status = 'ACTIVE' ORDER BY name"
-        drivers = execute_query(query, fetch_all=True)
+async def get_all_drivers(status: DriverStatus = DriverStatus.ALL, active_filter: ActiveFilter = ActiveFilter.ALL):
+    """Get all drivers, with status and active status filtering."""
+    conditions = []
+    params = []
+    
+    if active_filter == ActiveFilter.ACTIVE_ONLY:
+        conditions.append("status = 'ACTIVE'")
+    elif status != DriverStatus.ALL:
+        conditions.append("status = %s")
+        params.append(status.value)
+    
+    if conditions:
+        query = f"SELECT * FROM drivers WHERE {' AND '.join(conditions)} ORDER BY name"
+        drivers = execute_query(query, tuple(params), fetch_all=True)
     else:
         query = "SELECT * FROM drivers ORDER BY name"
         drivers = execute_query(query, fetch_all=True)
     return drivers or []
+
 
 @router.get("/drivers/{driver_id}", response_model=DriverResponse, tags=["Drivers"])
 async def get_driver(driver_id: str):
@@ -487,14 +500,15 @@ async def create_route(route: RouteCreate):
         raise HTTPException(status_code=400, detail="Failed to create route")
 
 @router.get("/routes", response_model=List[RouteResponse], tags=["Routes"])
-async def get_all_routes(active_only: bool = False):
-    """Get all routes, defaults to active only"""
-    if active_only:
+async def get_all_routes(active_filter: ActiveFilter = ActiveFilter.ALL):
+    """Get all routes, defaults to ALL"""
+    if active_filter == ActiveFilter.ACTIVE_ONLY:
         query = "SELECT * FROM routes WHERE routes_active_status = 'ACTIVE' ORDER BY name"
     else:
         query = "SELECT * FROM routes ORDER BY created_at DESC"
     routes = execute_query(query, fetch_all=True)
     return routes or []
+
 
 @router.get("/routes/{route_id}", response_model=RouteResponse, tags=["Routes"])
 async def get_route(route_id: str):
@@ -782,15 +796,16 @@ async def create_bus(bus: BusCreate):
         raise HTTPException(status_code=400, detail="Failed to create bus")
 
 @router.get("/buses", response_model=List[BusResponse], tags=["Buses"])
-async def get_all_buses(status: Optional[BusStatus] = None):
+async def get_all_buses(status: BusStatus = BusStatus.ALL):
     """Get all buses, optionally filtered by status"""
-    if status:
+    if status != BusStatus.ALL:
         query = "SELECT * FROM buses WHERE status = %s ORDER BY created_at DESC"
         buses = execute_query(query, (status.value,), fetch_all=True)
     else:
         query = "SELECT * FROM buses ORDER BY created_at DESC"
         buses = execute_query(query, fetch_all=True)
     return buses or []
+
 
 @router.get("/buses/{bus_id}", response_model=BusResponse, tags=["Buses"])
 async def get_bus(bus_id: str):
@@ -1062,24 +1077,24 @@ async def create_student(student: StudentCreate):
 
 @router.get("/students", response_model=List[StudentResponse], tags=["Students"])
 async def get_all_students(
-    student_status: Optional[StudentStatus] = None,
-    transport_status: Optional[TransportStatus] = None,
-    active_transport_only: bool = False
+    student_status: StudentStatus = StudentStatus.ALL,
+    transport_status: TransportStatus = TransportStatus.ALL,
+    active_filter: ActiveFilter = ActiveFilter.ALL
 ):
-    """Get all students with optional filters. active_transport_only=True returns CURRENT students using ACTIVE transport."""
+    """Get all students with optional filters. active_filter=ACTIVE_ONLY returns CURRENT students using ACTIVE transport."""
     conditions = []
     params = []
     
-    if active_transport_only:
+    if active_filter == ActiveFilter.ACTIVE_ONLY:
         conditions.append("student_status = 'CURRENT'")
         conditions.append("transport_status = 'ACTIVE'")
         conditions.append("is_transport_user = True")
     else:
-        if student_status:
+        if student_status != StudentStatus.ALL:
             conditions.append("student_status = %s")
             params.append(student_status.value)
         
-        if transport_status:
+        if transport_status != TransportStatus.ALL:
             conditions.append("transport_status = %s")
             params.append(transport_status.value)
     
@@ -1091,6 +1106,7 @@ async def get_all_students(
         students = execute_query(query, fetch_all=True)
     
     return students or []
+
 
 @router.get("/students/{student_id}", response_model=StudentResponse, tags=["Students"])
 async def get_student(student_id: str):
@@ -1456,13 +1472,13 @@ async def get_trips_by_route(route_id: str):
     return trips or []
 
 @router.get("/students/by-route/{route_id}", response_model=List[StudentResponse], tags=["Students"])
-async def get_students_by_route(route_id: str, active_only: bool = True):
+async def get_students_by_route(route_id: str, active_filter: ActiveFilter = ActiveFilter.ACTIVE_ONLY):
     """Get students on a route. By default, only returns active transport users."""
-    if active_only:
+    if active_filter == ActiveFilter.ACTIVE_ONLY:
         query = """
         SELECT * FROM students 
         WHERE (pickup_route_id = %s OR drop_route_id = %s) 
-        AND student_status = 'CURRENT' 
+        AND (student_status = 'CURRENT' OR student_status = 'ACTIVE')
         AND transport_status = 'ACTIVE'
         AND is_transport_user = True
         ORDER BY name
@@ -1473,8 +1489,10 @@ async def get_students_by_route(route_id: str, active_only: bool = True):
         WHERE pickup_route_id = %s OR drop_route_id = %s 
         ORDER BY name
         """
+    
     students = execute_query(query, (route_id, route_id), fetch_all=True)
     return students or []
+
 
 @router.get("/parents/by-route/{route_id}", response_model=List[ParentResponse], tags=["Parents"])
 async def get_parents_by_route(route_id: str):
