@@ -62,7 +62,7 @@ class FCMService:
             logger.error(f"Firebase Error during init: {err_msg}")
             return False, err_msg
 
-    async def send_to_topic(self, title: str, body: str, topic: str = 'all_users', message_type: str = 'text'):
+    async def send_to_topic(self, title: str, body: str, topic: str = 'all_users', message_type: str = 'audio'):
         try:
             if not self.initialized:
                 success, error = self.init_firebase()
@@ -94,7 +94,7 @@ class FCMService:
             logger.error(f"FCM Topic Send Error: {error}")
             return {"success": False, "error": str(error)}
 
-    async def send_to_device(self, title: str, body: str, token: str, recipient_type: str = 'parent', message_type: str = 'text'):
+    async def send_to_device(self, title: str, body: str, token: str, recipient_type: str = 'parent', message_type: str = 'audio'):
         try:
             if not self.initialized:
                 success, error = self.init_firebase()

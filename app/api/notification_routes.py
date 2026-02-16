@@ -74,7 +74,7 @@ async def send_notification(
     title: str = Body(...),
     body: str = Body(...),
     topic: str = Body("all_users"),
-    message_type: str = Body("text"),
+    message_type: str = Body("audio"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to a specific topic"""
@@ -93,7 +93,7 @@ async def send_device_notification(
     body: str = Body(...),
     token: str = Body(...),
     recipient_type: str = Body("parent"),
-    message_type: str = Body("text"),
+    message_type: str = Body("audio"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to a specific device token"""
@@ -110,7 +110,7 @@ async def send_device_notification(
 async def broadcast_drivers(
     title: str = Body(...),
     body: str = Body(...),
-    message_type: str = Body("text"),
+    message_type: str = Body("audio"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to all drivers"""
@@ -133,7 +133,7 @@ async def broadcast_drivers(
 async def broadcast_parents(
     title: str = Body(..., description="The title of the notification"),
     body: str = Body(..., description="The message body"),
-    message_type: str = Body("text", alias="messageType", description="Type of message (default: text)"),
+    message_type: str = Body("audio", alias="messageType", description="Type of message (default: audio)"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to all parents"""
@@ -166,7 +166,7 @@ async def send_student_notification(
     student_id: str,
     title: str = Body(...),
     body: str = Body(...),
-    message_type: str = Body("text"),
+    message_type: str = Body("audio"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to all FCM tokens associated with a student"""
@@ -189,7 +189,7 @@ async def send_parent_notification(
     parent_id: str,
     title: str = Body(...),
     body: str = Body(...),
-    message_type: str = Body("text"),
+    message_type: str = Body("audio"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to all FCM tokens associated with a parent"""
@@ -216,7 +216,7 @@ async def send_route_notification(
     route_id: str,
     title: str = Body(...),
     body: str = Body(...),
-    message_type: str = Body("text"),
+    message_type: str = Body("audio"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to everyone (parents/students) on a specific route"""
