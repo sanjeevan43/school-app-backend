@@ -62,32 +62,44 @@ class FCMService:
             logger.error(f"Firebase Error during init: {err_msg}")
             return False, err_msg
 
-    async def send_to_topic(self, title: str, body: str, topic: str = 'all_users', message_type: str = 'audio', notification_type: str = None):
+    async def send_to_topic(self, title: str, body: str, topic: str = 'all_users', message_type: str = 'audio'):
         try:
             if not self.initialized:
                 success, error = self.init_firebase()
                 if not success:
                     return {"success": False, "error": f"Firebase not initialized: {error}"}
 
-            # Use notification_type if provided, otherwise use message_type
-            final_type = notification_type or message_type or 'admin_notification'
+            # Sound logic: default to 'default' for audio, trip_started, arrival_update, etc.
+            # Only 'text' and 'FORCE_LOGOUT' are typically silent/standard in many setups
+            has_sound = message_type in ["audio", "trip_started", "arrival_update", "trip_completed"]
+            sound = "default" if has_sound else None
 
             message = messaging.Message(
                 notification=messaging.Notification(title=title, body=body),
                 data={
-                    'type': final_type,
+                    'type': 'admin_notification',
                     'title': title,
                     'body': body,
-                    'messageType': message_type,
+                    'messageType': message_type,     # Support camelCase
+                    'message_type': message_type,    # Support snake_case
                     'recipientType': topic,
                     'timestamp': str(int(time.time() * 1000)),
                     'source': 'admin_panel',
                     'message': body
                 },
-
                 android=messaging.AndroidConfig(
                     priority='high',
-                    ttl=3600
+                    ttl=3600,
+                    notification=messaging.AndroidNotification(
+                        sound=sound,
+                        channel_id="high_importance_channel" if has_sound else "default_channel",
+                        priority='high'
+                    )
+                ),
+                apns=messaging.APNSConfig(
+                    payload=messaging.APNSPayload(
+                        aps=messaging.Aps(sound=sound, content_available=True)
+                    )
                 ),
                 topic=topic
             )
@@ -98,31 +110,44 @@ class FCMService:
             logger.error(f"FCM Topic Send Error: {error}")
             return {"success": False, "error": str(error)}
 
-    async def send_to_device(self, title: str, body: str, token: str, recipient_type: str = 'parent', message_type: str = 'audio', notification_type: str = None):
+    async def send_to_device(self, title: str, body: str, token: str, recipient_type: str = 'parent', message_type: str = 'audio'):
         try:
             if not self.initialized:
                 success, error = self.init_firebase()
                 if not success:
                     return {"success": False, "error": f"Firebase not initialized: {error}"}
 
-            # Use notification_type if provided, otherwise use message_type
-            final_type = notification_type or message_type or 'admin_notification'
+            # Sound logic: use 'default' if audio or trip updates are requested
+            has_sound = message_type in ["audio", "trip_started", "arrival_update", "trip_completed"]
+            sound = "default" if has_sound else None
 
             message = messaging.Message(
                 token=token,
                 notification=messaging.Notification(title=title, body=body),
                 data={
-                    'type': final_type,
+                    'type': 'admin_notification',
                     'title': title,
                     'body': body,
-                    'messageType': message_type,
+                    'messageType': message_type,     # Support camelCase
+                    'message_type': message_type,    # Support snake_case
                     'recipientType': recipient_type,
                     'timestamp': str(int(time.time() * 1000)),
                     'source': 'admin_panel',
                     'message': body
                 },
-
-                android=messaging.AndroidConfig(priority='high')
+                android=messaging.AndroidConfig(
+                    priority='high',
+                    notification=messaging.AndroidNotification(
+                        sound=sound,
+                        channel_id="high_importance_channel" if has_sound else "default_channel",
+                        priority='high'
+                    )
+                ),
+                apns=messaging.APNSConfig(
+                    payload=messaging.APNSPayload(
+                        aps=messaging.Aps(sound=sound, content_available=True)
+                    )
+                )
             )
 
             response = messaging.send(message)
@@ -130,6 +155,7 @@ class FCMService:
         except Exception as error:
             logger.error(f"FCM Device Send Error: {error}")
             return {"success": False, "error": str(error)}
+
 
     async def send_force_logout(self, token: str):
         try:
@@ -149,7 +175,19 @@ class FCMService:
                     "messageType": "text",
                     "source": "system"
                 },
-                android=messaging.AndroidConfig(priority='high')
+                android=messaging.AndroidConfig(
+                    priority='high',
+                    notification=messaging.AndroidNotification(
+                        sound='default',
+                        channel_id="high_importance_channel",
+                        priority='high'
+                    )
+                ),
+                apns=messaging.APNSConfig(
+                    payload=messaging.APNSPayload(
+                        aps=messaging.Aps(sound='default')
+                    )
+                )
             )
 
             response = messaging.send(message)
@@ -157,6 +195,7 @@ class FCMService:
         except Exception as error:
             logger.error(f"FCM Force Logout Error: {error}")
             return {"success": False, "error": str(error)}
+
 
 
 # Global instance
