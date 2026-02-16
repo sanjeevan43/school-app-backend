@@ -110,6 +110,7 @@ async def send_device_notification(
 async def broadcast_drivers(
     title: str = Body(...),
     body: str = Body(...),
+    message_type: str = Body("text"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to all drivers"""
@@ -122,10 +123,11 @@ async def broadcast_drivers(
     results = []
     for d in drivers:
         if d['fcm_token']:
-            res = await notification_service.send_to_device(title, body, d['fcm_token'], recipient_type="driver")
+            res = await notification_service.send_to_device(title, body, d['fcm_token'], recipient_type="driver", message_type=message_type)
             results.append(res)
             
     return {"success": True, "delivered_count": len(results), "total_found": len(drivers)}
+
 
 @router.post("/notifications/broadcast/parents", tags=["Notifications"])
 async def broadcast_parents(
@@ -164,20 +166,20 @@ async def send_student_notification(
     student_id: str,
     title: str = Body(...),
     body: str = Body(...),
+    message_type: str = Body("text"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to all FCM tokens associated with a student"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
-    from app.core.database import execute_query
     tokens = execute_query("SELECT fcm_token FROM fcm_tokens WHERE student_id = %s", (student_id,), fetch_all=True)
     if not tokens:
         raise HTTPException(status_code=404, detail="No FCM tokens found for this student")
     
     results = []
     for t in tokens:
-        res = await notification_service.send_to_device(title, body, t['fcm_token'], recipient_type="student")
+        res = await notification_service.send_to_device(title, body, t['fcm_token'], recipient_type="student", message_type=message_type)
         results.append(res)
     
     return {"success": True, "details": results}
@@ -187,20 +189,24 @@ async def send_parent_notification(
     parent_id: str,
     title: str = Body(...),
     body: str = Body(...),
+    message_type: str = Body("text"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to all FCM tokens associated with a parent"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
-    from app.core.database import execute_query
     tokens = execute_query("SELECT fcm_token FROM fcm_tokens WHERE parent_id = %s", (parent_id,), fetch_all=True)
     if not tokens:
-        raise HTTPException(status_code=404, detail="No FCM tokens found for this parent")
+        # Check parent table to be sure
+        parent_check = execute_query("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,), fetch_one=True)
+        if not parent_check:
+            raise HTTPException(status_code=404, detail="Parent not found")
+        return {"success": True, "message": "No FCM tokens found for this parent", "details": []}
     
     results = []
     for t in tokens:
-        res = await notification_service.send_to_device(title, body, t['fcm_token'], recipient_type="parent")
+        res = await notification_service.send_to_device(title, body, t['fcm_token'], recipient_type="parent", message_type=message_type)
         results.append(res)
     
     return {"success": True, "details": results}
@@ -210,13 +216,13 @@ async def send_route_notification(
     route_id: str,
     title: str = Body(...),
     body: str = Body(...),
+    message_type: str = Body("text"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
     """Send a notification to everyone (parents/students) on a specific route"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
-    from app.core.database import execute_query
     query = """
     SELECT DISTINCT ft.fcm_token 
     FROM fcm_tokens ft
@@ -229,7 +235,8 @@ async def send_route_notification(
     
     results = []
     for t in tokens:
-        res = await notification_service.send_to_device(title, body, t['fcm_token'], recipient_type="route")
+        res = await notification_service.send_to_device(title, body, t['fcm_token'], recipient_type="route", message_type=message_type)
         results.append(res)
     
     return {"success": True, "count": len(results)}
+
