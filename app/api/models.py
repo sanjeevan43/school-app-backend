@@ -322,6 +322,9 @@ class StudentBase(BaseModel):
     study_year: str = Field(..., max_length=20)
     student_photo_url: Optional[str] = Field(None, max_length=200)
     is_transport_user: bool = True
+    student_status: StudentStatus = StudentStatus.CURRENT
+    transport_status: TransportStatus = TransportStatus.ACTIVE
+
 
 class StudentCreate(StudentBase):
     @field_validator('s_parent_id', mode='before')

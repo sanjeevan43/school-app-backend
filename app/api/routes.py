@@ -1045,13 +1045,15 @@ async def create_student(student: StudentCreate):
         query = """
         INSERT INTO students (student_id, parent_id, s_parent_id, name, dob, study_year, class_id,
                             pickup_route_id, drop_route_id, pickup_stop_id, drop_stop_id,
-                            emergency_contact, student_photo_url, is_transport_user)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            emergency_contact, student_photo_url, is_transport_user,
+                            student_status, transport_status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         execute_query(query, (student_id, student.parent_id, student.s_parent_id, student.name,
                              student.dob, student.study_year, student.class_id, student.pickup_route_id, 
                              student.drop_route_id, student.pickup_stop_id, student.drop_stop_id,
-                             student.emergency_contact, student.student_photo_url, student.is_transport_user))
+                             student.emergency_contact, student.student_photo_url, student.is_transport_user,
+                             student.student_status.value, student.transport_status.value))
         
         return await get_student(student_id)
     except Exception as e:
