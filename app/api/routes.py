@@ -1947,7 +1947,7 @@ async def start_trip(trip_id: str):
             student_ids = [s['student_id'] for s in students]
             parent_tokens = bus_tracking_service.get_parent_tokens_for_students(student_ids)
             if parent_tokens:
-                for token in parent_tokens:
+                for token in set(parent_tokens):
                     await notification_service.send_to_device(
                         title="Bus Trip Started",
                         body=f"The bus trip for route '{trip_data['route_id']}' has started.",
@@ -1955,6 +1955,7 @@ async def start_trip(trip_id: str):
                         recipient_type="parent",
                         message_type="trip_started"
                     )
+
 
 
         return trip_data

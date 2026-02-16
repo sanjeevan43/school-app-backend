@@ -136,12 +136,13 @@ class BusTrackingService:
                         if parent_tokens:
                             title = "Bus Arrival Update"
                             body = f"The bus with registration {trip['registration_number']} has reached {stop['stop_name']}."
-                            for token in parent_tokens:
+                            for token in set(parent_tokens):
                                 await notification_service.send_to_device(
                                     title, body, token, 
                                     recipient_type="parent",
                                     message_type="arrival_update"
                                 )
+
                             logger.info(f"Sent notifications to {len(parent_tokens)} parents for stop {stop['stop_name']}")
 
                         # Check if this is the last stop - auto complete trip
@@ -152,7 +153,7 @@ class BusTrackingService:
                             )
                             # Notify start of trip completion
                             if parent_tokens:
-                                for token in parent_tokens:
+                                for token in set(parent_tokens):
                                     await notification_service.send_to_device(
                                         "Trip Completed",
                                         f"The bus has reached the final stop: {stop['stop_name']}.",
@@ -160,6 +161,7 @@ class BusTrackingService:
                                         recipient_type="parent",
                                         message_type="trip_completed"
                                     )
+
                             
                             trip_completed = True
                             break

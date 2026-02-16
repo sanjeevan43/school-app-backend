@@ -121,12 +121,14 @@ async def broadcast_drivers(
     drivers = execute_query("SELECT fcm_token FROM drivers WHERE fcm_token IS NOT NULL AND status = 'ACTIVE'", fetch_all=True)
     
     results = []
-    for d in drivers:
-        if d['fcm_token']:
-            res = await notification_service.send_to_device(title, body, d['fcm_token'], recipient_type="driver", message_type=message_type)
-            results.append(res)
+    # Use set to avoid duplicate notifications if same token is stored multiple times
+    driver_tokens = {d['fcm_token'] for d in drivers if d['fcm_token']}
+    for token in driver_tokens:
+        res = await notification_service.send_to_device(title, body, token, recipient_type="driver", message_type=message_type)
+        results.append(res)
             
     return {"success": True, "delivered_count": len(results), "total_found": len(drivers)}
+
 
 
 @router.post("/notifications/broadcast/parents", tags=["Notifications"])
@@ -154,10 +156,11 @@ async def broadcast_parents(
     all_tokens = [t['fcm_token'] for t in tokens if t['fcm_token']]
     
     results = []
-    for t_val in all_tokens:
+    for t_val in set(all_tokens):
         # Defaulting to parent/text for this specific broadcast
         res = await notification_service.send_to_device(title, body, t_val, recipient_type="parent", message_type=message_type)
         results.append(res)
+
         
     return {"success": True, "delivered_count": len(results), "total_found": len(tokens), "message": f"Broadcast sent to {len(results)} devices"}
 
@@ -178,9 +181,11 @@ async def send_student_notification(
         raise HTTPException(status_code=404, detail="No FCM tokens found for this student")
     
     results = []
-    for t in tokens:
-        res = await notification_service.send_to_device(title, body, t['fcm_token'], recipient_type="student", message_type=message_type)
+    unique_tokens = {t['fcm_token'] for t in tokens if t['fcm_token']}
+    for t_val in unique_tokens:
+        res = await notification_service.send_to_device(title, body, t_val, recipient_type="student", message_type=message_type)
         results.append(res)
+
     
     return {"success": True, "details": results}
 
@@ -205,9 +210,11 @@ async def send_parent_notification(
         return {"success": True, "message": "No FCM tokens found for this parent", "details": []}
     
     results = []
-    for t in tokens:
-        res = await notification_service.send_to_device(title, body, t['fcm_token'], recipient_type="parent", message_type=message_type)
+    unique_tokens = {t['fcm_token'] for t in tokens if t['fcm_token']}
+    for t_val in unique_tokens:
+        res = await notification_service.send_to_device(title, body, t_val, recipient_type="parent", message_type=message_type)
         results.append(res)
+
     
     return {"success": True, "details": results}
 
@@ -234,9 +241,11 @@ async def send_route_notification(
         raise HTTPException(status_code=404, detail="No FCM tokens found for this route")
     
     results = []
-    for t in tokens:
-        res = await notification_service.send_to_device(title, body, t['fcm_token'], recipient_type="route", message_type=message_type)
+    unique_tokens = {t['fcm_token'] for t in tokens if t['fcm_token']}
+    for t_val in unique_tokens:
+        res = await notification_service.send_to_device(title, body, t_val, recipient_type="route", message_type=message_type)
         results.append(res)
     
     return {"success": True, "count": len(results)}
+
 
