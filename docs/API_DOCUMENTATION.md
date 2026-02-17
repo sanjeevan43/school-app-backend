@@ -596,21 +596,16 @@ Authorization: Bearer <your_token_here>
 ### 7. Get Class FCM Tokens
 **Endpoint**: `GET /classes/{class_id}/fcm-tokens`
 
-**Description**: Retrieve all active parent FCM tokens for students enrolled in a specific class. Used for sending class-wide notifications.
+**Description**: Retrieve a unique flat list of active parent/guardian FCM tokens for all students in a specific class. This is optimized for direct use with notification services.
 
 **Response**:
 ```json
 {
-  "parents": [
-    {
-      "parent_id": "uuid",
-      "name": "Parent Name",
-      "phone": 9876543210,
-      "fcm_token": "token",
-      "parents_active_status": "ACTIVE"
-    }
-  ],
-  "count": 1
+  "fcm_tokens": [
+    "fcm_token_1",
+    "fcm_token_2",
+    "fcm_token_3"
+  ]
 }
 ```
 

@@ -1069,23 +1069,24 @@ async def delete_class(class_id: str):
 
 @router.get("/classes/{class_id}/fcm-tokens", tags=["Classes"])
 async def get_class_fcm_tokens(class_id: str):
-    """Get all parent FCM tokens for a specific class"""
+    """Get unique parent FCM tokens for a specific class (flat list)"""
     # Verify class exists
     class_check = execute_query("SELECT class_id FROM classes WHERE class_id = %s", (class_id,), fetch_one=True)
     if not class_check:
         raise HTTPException(status_code=404, detail="Class not found")
         
     query = """
-    SELECT DISTINCT p.parent_id, p.name, p.phone, f.fcm_token, p.parents_active_status
+    SELECT DISTINCT f.fcm_token
     FROM students s
     JOIN parents p ON (s.parent_id = p.parent_id OR s.s_parent_id = p.parent_id)
     JOIN fcm_tokens f ON p.parent_id = f.parent_id
     WHERE s.class_id = %s AND f.fcm_token IS NOT NULL
     AND p.parents_active_status = 'ACTIVE'
-    ORDER BY p.name
     """
-    parents = execute_query(query, (class_id,), fetch_all=True)
-    return {"parents": parents or [], "count": len(parents) if parents else 0}
+    token_results = execute_query(query, (class_id,), fetch_all=True)
+    fcm_tokens = [row['fcm_token'] for row in token_results] if token_results else []
+    
+    return {"fcm_tokens": fcm_tokens}
 
 @router.get("/students/by-class/{class_id}", response_model=List[StudentResponse], tags=["Students"])
 async def get_students_by_class(class_id: str):
