@@ -510,6 +510,8 @@ Authorization: Bearer <your_token_here>
 ### 1. Create Route Stop
 **Endpoint**: `POST /route-stops`
 
+**Description**: Create a new route stop. The API validates the route, ensures the order is sequential (no gaps), shifts any existing stops to make room, and rebuilds the FCM cache.
+
 **Request Body**:
 ```json
 {
@@ -521,6 +523,8 @@ Authorization: Bearer <your_token_here>
   "drop_stop_order": 5
 }
 ```
+
+**Response**: Array of all route stops for that route, sorted by order.
 
 ### 2. Get All Route Stops
 **Endpoint**: `GET /route-stops`

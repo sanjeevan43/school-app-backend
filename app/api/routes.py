@@ -595,34 +595,75 @@ async def delete_route(route_id: str):
 # ROUTE STOP ENDPOINTS
 # =====================================================
 
-@router.post("/route-stops", response_model=RouteStopResponse, tags=["Route Stops"])
+@router.post("/route-stops", response_model=List[RouteStopResponse], tags=["Route Stops"])
 async def create_route_stop(route_stop: RouteStopCreate):
-    """Create a new route stop"""
-    try:
-        # Make space for the new stop if needed
-        target_order = route_stop.pickup_stop_order
-        execute_query(
-            "UPDATE route_stops SET pickup_stop_order = pickup_stop_order + 1, drop_stop_order = drop_stop_order + 1 WHERE route_id = %s AND pickup_stop_order >= %s",
-            (route_stop.route_id, target_order)
+    """Create a new route stop with order validation and transactional shifting"""
+    route_id = route_stop.route_id
+    new_order = route_stop.pickup_stop_order
+
+    # 1. Validate route exists
+    route = execute_query("SELECT route_id FROM routes WHERE route_id = %s", (route_id,), fetch_one=True)
+    if not route:
+        raise HTTPException(status_code=404, detail=f"Route {route_id} not found")
+
+    # 2. Validate pickup_stop_order is >= 1
+    if new_order < 1:
+        raise HTTPException(status_code=400, detail="pickup_stop_order must be greater than or equal to 1")
+
+    # 3. Get current maximum pickup_stop_order for that route
+    max_order_data = execute_query(
+        "SELECT MAX(pickup_stop_order) as max_order FROM route_stops WHERE route_id = %s",
+        (route_id,),
+        fetch_one=True
+    )
+    max_order = max_order_data['max_order'] if max_order_data and max_order_data['max_order'] is not None else 0
+
+    # 4. If new_order > max_order + 1 → return validation error
+    if new_order > max_order + 1:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid order. Next available order is {max_order + 1}, but {new_order} was provided."
         )
 
-        stop_id = str(uuid.uuid4())
-        query = """
-        INSERT INTO route_stops (stop_id, route_id, stop_name, latitude, longitude, 
-                               pickup_stop_order, drop_stop_order)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """
-        execute_query(query, (stop_id, route_stop.route_id, route_stop.stop_name,
-                             route_stop.latitude, route_stop.longitude,
-                             target_order, target_order))
-        
-        # Normalize orders to ensure they are 1, 2, 3...
-        _reorder_route_stops(route_stop.route_id)
-        
-        return await get_route_stop(stop_id)
+    try:
+        # 5. Start database transaction
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                # 6. Shift existing stops
+                shift_query = """
+                UPDATE route_stops
+                SET pickup_stop_order = pickup_stop_order + 1
+                WHERE route_id = %s
+                AND pickup_stop_order >= %s
+                """
+                cursor.execute(shift_query, (route_id, new_order))
+
+                # 7. Insert new stop with given order
+                stop_id = str(uuid.uuid4())
+                insert_query = """
+                INSERT INTO route_stops (stop_id, route_id, stop_name, latitude, longitude, 
+                                       pickup_stop_order, drop_stop_order)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """
+                # For now, we keep drop_stop_order same as pickup_stop_order as per existing patterns
+                cursor.execute(insert_query, (
+                    stop_id, route_id, route_stop.stop_name, 
+                    route_stop.latitude, route_stop.longitude, 
+                    new_order, new_order
+                ))
+                # 8. Commit transaction (handled by context manager)
+
+        # 9. Rebuild route_stop_fcm_cache for that route
+        cascade_service.update_route_fcm_cache(route_id)
+
+        # 10. Return updated stop list sorted by pickup_stop_order
+        return await get_all_route_stops(route_id)
+
     except Exception as e:
         logger.error(f"Create route stop error: {e}")
-        raise HTTPException(status_code=400, detail="Failed to create route stop")
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail=f"Failed to create route stop: {str(e)}")
 
 @router.get("/route-stops", response_model=List[RouteStopResponse], tags=["Route Stops"])
 async def get_all_route_stops(route_id: Optional[str] = None):
