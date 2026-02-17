@@ -1293,6 +1293,15 @@ async def patch_student_primary_parent(student_id: str, parent_data: PrimaryPare
     
     return await get_student(student_id)
 
+@router.patch("/students/{student_id}/photo", response_model=StudentResponse, tags=["Students"])
+async def patch_student_photo(student_id: str, photo_data: StudentPhotoUpdate):
+    """PATCH: Update student photo URL"""
+    query = "UPDATE students SET student_photo_url = %s, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
+    result = execute_query(query, (photo_data.student_photo_url, student_id))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return await get_student(student_id)
+
 @router.post("/students/{student_id}/switch-parents", response_model=StudentResponse, tags=["Students"])
 async def switch_student_parents(student_id: str):
     """POST: Swap primary and secondary parents for a student."""

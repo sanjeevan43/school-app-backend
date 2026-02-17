@@ -335,7 +335,19 @@ Authorization: Bearer <your_token_here>
 }
 ```
 
-### 8. Switch Primary and Secondary Parents (POST)
+### 8. Update Student Photo (PATCH)
+**Endpoint**: `PATCH /students/{student_id}/photo`
+
+**Description**: Update the photo URL for a student.
+
+**Request Body**:
+```json
+{
+  "student_photo_url": "https://example.com/new-photo.jpg"
+}
+```
+
+### 9. Switch Primary and Secondary Parents (POST)
 **Endpoint**: `POST /students/{student_id}/switch-parents`
 
 **Description**: Swap the roles of primary and secondary parents for a student. Requires the student to already have a secondary parent assigned.

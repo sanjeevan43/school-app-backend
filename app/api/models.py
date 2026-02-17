@@ -363,6 +363,9 @@ class StudentUpdate(BaseModel):
 class SecondaryParentUpdate(BaseModel):
     s_parent_id: Optional[str] = Field(None, description="Secondary Parent ID (UUID)")
 
+class StudentPhotoUpdate(BaseModel):
+    student_photo_url: str = Field(..., max_length=200, description="URL of the student's photo")
+
 class PrimaryParentUpdate(BaseModel):
     parent_id: str = Field(..., description="Primary Parent ID (UUID)")
 
