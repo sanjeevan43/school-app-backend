@@ -999,11 +999,10 @@ async def create_class(class_data: ClassCreate):
     try:
         class_id = str(uuid.uuid4())
         query = """
-        INSERT INTO classes (class_id, class_name, section, academic_year)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO classes (class_id, class_name, section)
+        VALUES (%s, %s, %s)
         """
-        execute_query(query, (class_id, class_data.class_name, class_data.section, 
-                             class_data.academic_year))
+        execute_query(query, (class_id, class_data.class_name, class_data.section))
         
         return await get_class(class_id)
     except Exception as e:

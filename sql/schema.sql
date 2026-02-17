@@ -95,11 +95,10 @@ CREATE TABLE IF NOT EXISTS classes (
     class_id VARCHAR(36) PRIMARY KEY,
     class_name VARCHAR(20) NOT NULL,
     section VARCHAR(10) NOT NULL,
-    academic_year VARCHAR(20) NOT NULL,
     status VARCHAR(20) DEFAULT 'ACTIVE',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY unique_class (class_name, section, academic_year)
+    UNIQUE KEY unique_class (class_name, section)
 );
 
 -- Students Table

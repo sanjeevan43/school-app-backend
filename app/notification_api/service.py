@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import asyncio
 from pathlib import Path
 import firebase_admin
 from firebase_admin import credentials, messaging
@@ -15,6 +16,7 @@ class FCMService:
     def __init__(self):
         self.creds_path = self._resolve_creds_path()
         self.initialized = False
+        self.last_error = None
         if self.creds_path:
             self.init_firebase()
 
@@ -24,43 +26,64 @@ class FCMService:
         possible_paths = [
             project_root / 'firebase-credentials.json',
             current_dir / 'firebase-credentials.json',
-            Path(os.getcwd()) / 'firebase-credentials.json'
+            Path(os.getcwd()) / 'firebase-credentials.json',
+            Path('./firebase-credentials.json')
         ]
-        return next((p for p in possible_paths if p.exists()), None)
+        path = next((p for p in possible_paths if p.exists()), None)
+        if path:
+            logger.info(f"FCM: Found credentials at {path}")
+        else:
+            logger.warning("FCM: firebase-credentials.json NOT FOUND in any expected location")
+        return path
 
     def init_firebase(self):
         try:
             if not self.creds_path:
-                return False, "firebase-credentials.json NOT FOUND"
+                self.last_error = "firebase-credentials.json NOT FOUND"
+                return False, self.last_error
+
+            # Check if already initialized to avoid "app already exists" error
+            try:
+                firebase_admin.get_app()
+                self.initialized = True
+                return True, "Already initialized"
+            except ValueError:
+                # App not initialized, proceed
+                pass
 
             with open(self.creds_path, 'r', encoding='utf-8') as f:
                 service_account = json.load(f)
             
             project_id = service_account.get('project_id')
-            if project_id:
-                os.environ['GOOGLE_CLOUD_PROJECT'] = project_id
-                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = str(self.creds_path)
+            if not project_id:
+                self.last_error = "project_id MISSING in credentials JSON"
+                logger.error(self.last_error)
+                return False, self.last_error
 
-            try:
-                firebase_apps = firebase_admin._apps
-                if firebase_apps:
-                    for app_name in list(firebase_apps.keys()):
-                        firebase_admin.delete_app(firebase_admin.get_app(app_name))
-            except Exception as e:
-                logger.warning(f"Error during app cleanup: {e}")
+            # Set environment variables for other SDKs if needed
+            os.environ['GOOGLE_CLOUD_PROJECT'] = project_id
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = str(self.creds_path)
 
             cred = credentials.Certificate(service_account)
             firebase_admin.initialize_app(cred, {
                 'projectId': project_id
             })
 
-            logger.info(f"Firebase Admin initialized for: {firebase_admin.get_app().project_id}")
+            logger.info(f"✅ Firebase Admin initialized for: {firebase_admin.get_app().project_id}")
             self.initialized = True
+            self.last_error = None
             return True, "Success"
         except Exception as error:
-            err_msg = str(error)
-            logger.error(f"Firebase Error during init: {err_msg}")
-            return False, err_msg
+            self.last_error = str(error)
+            logger.error(f"❌ Firebase Error during init: {self.last_error}")
+            return False, self.last_error
+
+    def _get_sound_config(self, message_type: str):
+        # Default to sound for almost everything unless explicitly silent
+        is_silent = message_type in ["silent", "background", "data_only"]
+        sound = "default" if not is_silent else None
+        channel_id = "high_importance_channel" if not is_silent else "default_channel"
+        return sound, channel_id
 
     async def send_to_topic(self, title: str, body: str, topic: str = 'all_users', message_type: str = 'audio'):
         try:
@@ -69,10 +92,7 @@ class FCMService:
                 if not success:
                     return {"success": False, "error": f"Firebase not initialized: {error}"}
 
-            # Sound logic: default to 'default' for audio, trip_started, arrival_update, etc.
-            # Only 'text' and 'FORCE_LOGOUT' are typically silent/standard in many setups
-            has_sound = message_type in ["audio", "trip_started", "arrival_update", "trip_completed"]
-            sound = "default" if has_sound else None
+            sound, channel_id = self._get_sound_config(message_type)
 
             message = messaging.Message(
                 notification=messaging.Notification(title=title, body=body),
@@ -80,20 +100,22 @@ class FCMService:
                     'type': 'admin_notification',
                     'title': title,
                     'body': body,
-                    'messageType': message_type,     # Support camelCase
-                    'message_type': message_type,    # Support snake_case
+                    'messageType': message_type,
+                    'message_type': message_type,
                     'recipientType': topic,
                     'timestamp': str(int(time.time() * 1000)),
                     'source': 'admin_panel',
-                    'message': body
+                    'click_action': 'FLUTTER_NOTIFICATION_CLICK'
                 },
                 android=messaging.AndroidConfig(
                     priority='high',
                     ttl=3600,
                     notification=messaging.AndroidNotification(
                         sound=sound,
-                        channel_id="high_importance_channel" if has_sound else "default_channel",
-                        priority='high'
+                        channel_id=channel_id,
+                        priority='high',
+                        default_sound=True,
+                        default_vibrate_timings=True
                     )
                 ),
                 apns=messaging.APNSConfig(
@@ -105,21 +127,23 @@ class FCMService:
             )
 
             response = messaging.send(message)
+            logger.info(f"Successfully sent topic message: {response}")
             return {"success": True, "messageId": response}
         except Exception as error:
             logger.error(f"FCM Topic Send Error: {error}")
             return {"success": False, "error": str(error)}
 
     async def send_to_device(self, title: str, body: str, token: str, recipient_type: str = 'parent', message_type: str = 'audio'):
+        if not token or token == "undefined" or token == "null":
+            return {"success": False, "error": "Invalid token"}
+            
         try:
             if not self.initialized:
                 success, error = self.init_firebase()
                 if not success:
                     return {"success": False, "error": f"Firebase not initialized: {error}"}
 
-            # Sound logic: use 'default' if audio or trip updates are requested
-            has_sound = message_type in ["audio", "trip_started", "arrival_update", "trip_completed"]
-            sound = "default" if has_sound else None
+            sound, channel_id = self._get_sound_config(message_type)
 
             message = messaging.Message(
                 token=token,
@@ -128,19 +152,21 @@ class FCMService:
                     'type': 'admin_notification',
                     'title': title,
                     'body': body,
-                    'messageType': message_type,     # Support camelCase
-                    'message_type': message_type,    # Support snake_case
+                    'messageType': message_type,
+                    'message_type': message_type,
                     'recipientType': recipient_type,
                     'timestamp': str(int(time.time() * 1000)),
                     'source': 'admin_panel',
-                    'message': body
+                    'click_action': 'FLUTTER_NOTIFICATION_CLICK'
                 },
                 android=messaging.AndroidConfig(
                     priority='high',
                     notification=messaging.AndroidNotification(
                         sound=sound,
-                        channel_id="high_importance_channel" if has_sound else "default_channel",
-                        priority='high'
+                        channel_id=channel_id,
+                        priority='high',
+                        default_sound=True,
+                        default_vibrate_timings=True
                     )
                 ),
                 apns=messaging.APNSConfig(
@@ -150,19 +176,19 @@ class FCMService:
                 )
             )
 
-            response = messaging.send(message)
+            # Using loop.run_in_executor to avoid blocking the event loop with the sync messaging.send
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, lambda: messaging.send(message))
             return {"success": True, "messageId": response}
         except Exception as error:
-            logger.error(f"FCM Device Send Error: {error}")
+            logger.error(f"FCM Device Send Error for token {token[:10]}...: {error}")
             return {"success": False, "error": str(error)}
 
-
     async def send_force_logout(self, token: str):
+        if not token: return {"success": False, "error": "No token"}
         try:
             if not self.initialized:
-                success, error = self.init_firebase()
-                if not success:
-                    return {"success": False, "error": f"Firebase not initialized: {error}"}
+                self.init_firebase()
 
             message = messaging.Message(
                 token=token,
@@ -174,29 +200,15 @@ class FCMService:
                     "type": "FORCE_LOGOUT",
                     "messageType": "text",
                     "source": "system"
-                },
-                android=messaging.AndroidConfig(
-                    priority='high',
-                    notification=messaging.AndroidNotification(
-                        sound='default',
-                        channel_id="high_importance_channel",
-                        priority='high'
-                    )
-                ),
-                apns=messaging.APNSConfig(
-                    payload=messaging.APNSPayload(
-                        aps=messaging.Aps(sound='default')
-                    )
-                )
+                }
             )
 
-            response = messaging.send(message)
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, lambda: messaging.send(message))
             return {"success": True, "messageId": response}
         except Exception as error:
             logger.error(f"FCM Force Logout Error: {error}")
             return {"success": False, "error": str(error)}
-
-
 
 # Global instance
 notification_service = FCMService()

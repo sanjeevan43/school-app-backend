@@ -566,8 +566,7 @@ Authorization: Bearer <your_token_here>
 ```json
 {
   "class_name": "10",
-  "section": "A",
-  "academic_year": "2024-2025"
+  "section": "A"
 }
 ```
 

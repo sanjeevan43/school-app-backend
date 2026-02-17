@@ -254,7 +254,6 @@ class BusResponse(BaseModel):
 class ClassBase(BaseModel):
     class_name: str = Field(..., max_length=20)
     section: str = Field(..., max_length=10)
-    academic_year: str = Field(..., max_length=20)
 
 class ClassCreate(ClassBase):
     pass
@@ -262,14 +261,12 @@ class ClassCreate(ClassBase):
 class ClassUpdate(BaseModel):
     class_name: Optional[str] = Field(None, max_length=20)
     section: Optional[str] = Field(None, max_length=10)
-    academic_year: Optional[str] = Field(None, max_length=20)
     status: Optional[UserStatus] = None
 
 class ClassResponse(BaseModel):
     class_id: str
     class_name: str = Field(..., max_length=20)
     section: str = Field(..., max_length=10)
-    academic_year: str = Field(..., max_length=20)
     status: UserStatus
     created_at: datetime
     updated_at: datetime

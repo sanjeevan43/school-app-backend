@@ -62,11 +62,14 @@ async def login(login_data: LoginRequest):
 
 @router.get("/notifications/status", tags=["Notifications"])
 async def get_status():
-    """Check notification service status"""
+    """Check notification service status with detailed diagnostics"""
     return {
         "status": "online" if notification_service.initialized else "offline",
         "initialized": notification_service.initialized,
-        "creds_found": notification_service.creds_path is not None
+        "creds_found": notification_service.creds_path is not None,
+        "creds_path": str(notification_service.creds_path) if notification_service.creds_path else None,
+        "last_error": notification_service.last_error,
+        "project_id": os.environ.get('GOOGLE_CLOUD_PROJECT')
     }
 
 @router.post("/send-notification", tags=["Notifications"])
@@ -113,23 +116,31 @@ async def broadcast_drivers(
     message_type: str = Body("audio"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
-    """Send a notification to all drivers"""
+    """Send a notification to all drivers concurrently"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     # Fetch all driver tokens
     drivers = execute_query("SELECT fcm_token FROM drivers WHERE fcm_token IS NOT NULL AND status = 'ACTIVE'", fetch_all=True)
-    
-    results = []
-    # Use set to avoid duplicate notifications if same token is stored multiple times
     driver_tokens = {d['fcm_token'] for d in drivers if d['fcm_token']}
-    for token in driver_tokens:
-        res = await notification_service.send_to_device(title, body, token, recipient_type="driver", message_type=message_type)
-        results.append(res)
-            
-    return {"success": True, "delivered_count": len(results), "total_found": len(drivers)}
+    
+    if not driver_tokens:
+        return {"success": True, "delivered_count": 0, "total_found": 0, "message": "No active driver tokens found"}
 
-
+    # Send concurrently
+    tasks = [
+        notification_service.send_to_device(title, body, token, recipient_type="driver", message_type=message_type)
+        for token in driver_tokens
+    ]
+    results = await asyncio.gather(*tasks)
+    
+    success_count = sum(1 for r in results if r.get("success"))
+    return {
+        "success": True, 
+        "delivered_count": success_count, 
+        "total_tokens": len(driver_tokens),
+        "message": f"Broadcast sent to {success_count} drivers"
+    }
 
 @router.post("/notifications/broadcast/parents", tags=["Notifications"])
 async def broadcast_parents(
@@ -138,7 +149,7 @@ async def broadcast_parents(
     message_type: str = Body("audio", alias="messageType", description="Type of message (default: audio)"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
-    """Send a notification to all parents"""
+    """Send a notification to all parents concurrently"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
@@ -151,15 +162,25 @@ async def broadcast_parents(
     AND p.parents_active_status = 'ACTIVE'
     """
     tokens = execute_query(query, fetch_all=True)
+    all_tokens = {t['fcm_token'] for t in tokens if t['fcm_token']}
     
-    # Extract tokens
-    all_tokens = [t['fcm_token'] for t in tokens if t['fcm_token']]
+    if not all_tokens:
+        return {"success": True, "delivered_count": 0, "total_found": 0, "message": "No active parent tokens found"}
+
+    # Send concurrently
+    tasks = [
+        notification_service.send_to_device(title, body, t_val, recipient_type="parent", message_type=message_type)
+        for t_val in all_tokens
+    ]
+    results = await asyncio.gather(*tasks)
     
-    results = []
-    for t_val in set(all_tokens):
-        # Defaulting to parent/text for this specific broadcast
-        res = await notification_service.send_to_device(title, body, t_val, recipient_type="parent", message_type=message_type)
-        results.append(res)
+    success_count = sum(1 for r in results if r.get("success"))
+    return {
+        "success": True, 
+        "delivered_count": success_count, 
+        "total_tokens": len(all_tokens), 
+        "message": f"Broadcast sent to {success_count} parents"
+    }
 
         
     return {"success": True, "delivered_count": len(results), "total_found": len(tokens), "message": f"Broadcast sent to {len(results)} devices"}
