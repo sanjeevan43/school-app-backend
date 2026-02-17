@@ -172,19 +172,16 @@ Authorization: Bearer <your_token_here>
 ### 8. Get All Parent FCM Tokens
 **Endpoint**: `GET /parents/fcm-tokens/all`
 
+**Description**: Retrieve a unique flat list of FCM tokens for all active parents.
+
 **Response**:
 ```json
 {
-  "parents": [
-    {
-      "parent_id": "uuid",
-      "name": "Parent Name",
-      "phone": 9876543210,
-      "fcm_token": "token",
-      "parents_active_status": "ACTIVE"
-    }
+  "fcm_tokens": [
+    "fcm_token_1",
+    "fcm_token_2"
   ],
-  "count": 1
+  "count": 2
 }
 ```
 
@@ -245,19 +242,16 @@ Authorization: Bearer <your_token_here>
 ### 7. Get All Driver FCM Tokens
 **Endpoint**: `GET /drivers/fcm-tokens/all`
 
+**Description**: Retrieve a unique flat list of FCM tokens for all active drivers.
+
 **Response**:
 ```json
 {
-  "drivers": [
-    {
-      "driver_id": "uuid",
-      "name": "Driver Name",
-      "phone": 9876543210,
-      "fcm_token": "token",
-      "status": "ACTIVE"
-    }
+  "fcm_tokens": [
+    "fcm_token_1",
+    "fcm_token_2"
   ],
-  "count": 1
+  "count": 2
 }
 ```
 
@@ -724,14 +718,39 @@ Authorization: Bearer <your_token_here>
 
 ### 2. Get All FCM Tokens
 **Endpoint**: `GET /fcm-tokens`
+**Description**: Get a flat list of all unique FCM tokens in the system.
+**Response**:
+```json
+{
+  "fcm_tokens": ["token1", "token2"]
+}
+```
 
 ### 3. Get FCM Token by ID
 **Endpoint**: `GET /fcm-tokens/{fcm_id}`
 
-### 4. Update FCM Token
+### 4. Get FCM Tokens by Student
+**Endpoint**: `GET /fcm-tokens/by-student/{student_id}`
+**Response**:
+```json
+{
+  "fcm_tokens": ["token1", "token2"]
+}
+```
+
+### 5. Get FCM Tokens by Parent
+**Endpoint**: `GET /fcm-tokens/by-parent/{parent_id}`
+**Response**:
+```json
+{
+  "fcm_tokens": ["token1", "token2"]
+}
+```
+
+### 6. Update FCM Token
 **Endpoint**: `PUT /fcm-tokens/{fcm_id}`
 
-### 5. Delete FCM Token
+### 7. Delete FCM Token
 **Endpoint**: `DELETE /fcm-tokens/{fcm_id}`
 
 ---

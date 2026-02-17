@@ -327,16 +327,17 @@ async def patch_parent_fcm_token(parent_id: str, fcm_data: dict):
 
 @router.get("/parents/fcm-tokens/all", tags=["Parents"])
 async def get_all_parent_fcm_tokens():
-    """GET: Retrieve all parent FCM tokens"""
+    """GET: Retrieve all unique parent FCM tokens (flat list)"""
     query = """
-    SELECT p.parent_id, p.name, p.phone, f.fcm_token, p.parents_active_status 
+    SELECT DISTINCT f.fcm_token 
     FROM parents p
     INNER JOIN fcm_tokens f ON p.parent_id = f.parent_id
-    WHERE f.fcm_token IS NOT NULL
-    ORDER BY p.name
+    WHERE f.fcm_token IS NOT NULL AND p.parents_active_status = 'ACTIVE'
     """
-    parents = execute_query(query, fetch_all=True)
-    return {"parents": parents or [], "count": len(parents) if parents else 0}
+    token_results = execute_query(query, fetch_all=True)
+    # Use set comprehension to ensure uniqueness and then convert back to list
+    fcm_tokens = list({row['fcm_token'] for row in token_results}) if token_results else []
+    return {"fcm_tokens": fcm_tokens, "count": len(fcm_tokens)}
 
 @router.delete("/parents/{parent_id}", tags=["Parents"])
 async def delete_parent(parent_id: str):
@@ -463,15 +464,16 @@ async def patch_driver_fcm_token(driver_id: str, fcm_data: dict):
 
 @router.get("/drivers/fcm-tokens/all", tags=["Drivers"])
 async def get_all_driver_fcm_tokens():
-    """GET: Retrieve all driver FCM tokens"""
+    """GET: Retrieve all unique driver FCM tokens (flat list)"""
     query = """
-    SELECT driver_id, name, phone, fcm_token, status 
+    SELECT DISTINCT fcm_token 
     FROM drivers 
     WHERE fcm_token IS NOT NULL AND fcm_token != '' AND status = 'ACTIVE'
-    ORDER BY name
     """
-    drivers = execute_query(query, fetch_all=True)
-    return {"drivers": drivers or [], "count": len(drivers) if drivers else 0}
+    token_results = execute_query(query, fetch_all=True)
+    # Use set comprehension to ensure uniqueness
+    fcm_tokens = list({row['fcm_token'] for row in token_results}) if token_results else []
+    return {"fcm_tokens": fcm_tokens, "count": len(fcm_tokens)}
 
 @router.delete("/drivers/{driver_id}", tags=["Drivers"])
 async def delete_driver(driver_id: str):
@@ -1083,7 +1085,8 @@ async def get_class_fcm_tokens(class_id: str):
     AND p.parents_active_status = 'ACTIVE'
     """
     token_results = execute_query(query, (class_id,), fetch_all=True)
-    fcm_tokens = [row['fcm_token'] for row in token_results] if token_results else []
+    # Ensure uniqueness with a set in Python as well
+    fcm_tokens = list({row['fcm_token'] for row in token_results}) if token_results else []
     
     return {"fcm_tokens": fcm_tokens}
 
@@ -1760,12 +1763,13 @@ async def create_fcm_token(fcm_token: FCMTokenCreate):
         raise HTTPException(status_code=400, detail=f"Failed to create FCM token: {str(e)}")
 
 
-@router.get("/fcm-tokens", response_model=List[FCMTokenResponse], tags=["FCM Tokens"])
+@router.get("/fcm-tokens", tags=["FCM Tokens"])
 async def get_all_fcm_tokens():
-    """Get all FCM tokens"""
-    query = "SELECT * FROM fcm_tokens ORDER BY created_at DESC"
-    tokens = execute_query(query, fetch_all=True)
-    return tokens or []
+    """Get all unique FCM tokens (flat list)"""
+    query = "SELECT DISTINCT fcm_token FROM fcm_tokens ORDER BY created_at DESC"
+    token_results = execute_query(query, fetch_all=True)
+    fcm_tokens = list({row['fcm_token'] for row in token_results}) if token_results else []
+    return {"fcm_tokens": fcm_tokens}
 
 @router.get("/fcm-tokens/{fcm_id}", response_model=FCMTokenResponse, tags=["FCM Tokens"])
 async def get_fcm_token(fcm_id: str):
@@ -1776,19 +1780,21 @@ async def get_fcm_token(fcm_id: str):
         raise HTTPException(status_code=404, detail="FCM token not found")
     return token
 
-@router.get("/fcm-tokens/by-student/{student_id}", response_model=List[FCMTokenResponse], tags=["FCM Tokens"])
+@router.get("/fcm-tokens/by-student/{student_id}", tags=["FCM Tokens"])
 async def get_fcm_tokens_by_student(student_id: str):
-    """Get all FCM tokens registered for a specific student"""
-    query = "SELECT * FROM fcm_tokens WHERE student_id = %s"
-    tokens = execute_query(query, (student_id,), fetch_all=True)
-    return tokens or []
+    """Get unique FCM tokens registered for a specific student"""
+    query = "SELECT DISTINCT fcm_token FROM fcm_tokens WHERE student_id = %s"
+    token_results = execute_query(query, (student_id,), fetch_all=True)
+    fcm_tokens = list({row['fcm_token'] for row in token_results}) if token_results else []
+    return {"fcm_tokens": fcm_tokens}
 
-@router.get("/fcm-tokens/by-parent/{parent_id}", response_model=List[FCMTokenResponse], tags=["FCM Tokens"])
+@router.get("/fcm-tokens/by-parent/{parent_id}", tags=["FCM Tokens"])
 async def get_fcm_tokens_by_parent(parent_id: str):
-    """Get all FCM tokens registered for a specific parent"""
-    query = "SELECT * FROM fcm_tokens WHERE parent_id = %s"
-    tokens = execute_query(query, (parent_id,), fetch_all=True)
-    return tokens or []
+    """Get unique FCM tokens registered for a specific parent"""
+    query = "SELECT DISTINCT fcm_token FROM fcm_tokens WHERE parent_id = %s"
+    token_results = execute_query(query, (parent_id,), fetch_all=True)
+    fcm_tokens = list({row['fcm_token'] for row in token_results}) if token_results else []
+    return {"fcm_tokens": fcm_tokens}
 
 @router.put("/fcm-tokens/{fcm_id}", response_model=FCMTokenResponse, tags=["FCM Tokens"])
 async def update_fcm_token(fcm_id: str, fcm_update: FCMTokenUpdate):
@@ -1887,12 +1893,14 @@ async def get_fcm_tokens_by_route(route_id: str):
                 }
             
             if row['fcm_token']:
-                token_entry = {
-                    "fcm_token": row['fcm_token'],
-                    "parent_id": row['parent_id'],
-                    "parent_name": row['parent_name']
-                }
-                if token_entry not in stops_data[stop_id]["fcm_tokens"]:
+                # Ensure each stop has unique tokens
+                existing_tokens = {t['fcm_token'] for t in stops_data[stop_id]["fcm_tokens"]}
+                if row['fcm_token'] not in existing_tokens:
+                    token_entry = {
+                        "fcm_token": row['fcm_token'],
+                        "parent_id": row['parent_id'],
+                        "parent_name": row['parent_name']
+                    }
                     stops_data[stop_id]["fcm_tokens"].append(token_entry)
         
         # Add unassigned students if any
@@ -1907,12 +1915,13 @@ async def get_fcm_tokens_by_route(route_id: str):
             }
             for row in unassigned_results:
                 if row['fcm_token']:
-                    token_entry = {
-                        "fcm_token": row['fcm_token'],
-                        "parent_id": row['parent_id'],
-                        "parent_name": row['parent_name']
-                    }
-                    if token_entry not in stops_data[unassigned_stop_id]["fcm_tokens"]:
+                    existing_tokens = {t['fcm_token'] for t in stops_data[unassigned_stop_id]["fcm_tokens"]}
+                    if row['fcm_token'] not in existing_tokens:
+                        token_entry = {
+                            "fcm_token": row['fcm_token'],
+                            "parent_id": row['parent_id'],
+                            "parent_name": row['parent_name']
+                        }
                         stops_data[unassigned_stop_id]["fcm_tokens"].append(token_entry)
 
         return {
@@ -1970,12 +1979,13 @@ async def get_fcm_tokens_by_stop(stop_id: str):
                 }
             
             if row['fcm_token']:
-                token_entry = {
-                    "fcm_token": row['fcm_token'],
-                    "parent_id": row['parent_id'],
-                    "parent_name": row['parent_name']
-                }
-                if token_entry not in fcm_tokens:
+                existing_tokens = {t['fcm_token'] for t in fcm_tokens}
+                if row['fcm_token'] not in existing_tokens:
+                    token_entry = {
+                        "fcm_token": row['fcm_token'],
+                        "parent_id": row['parent_id'],
+                        "parent_name": row['parent_name']
+                    }
                     fcm_tokens.append(token_entry)
         
         return {
