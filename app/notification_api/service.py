@@ -39,6 +39,9 @@ class FCMService:
     def init_firebase(self):
         try:
             if not self.creds_path:
+                self.creds_path = self._resolve_creds_path()
+            
+            if not self.creds_path:
                 self.last_error = "firebase-credentials.json NOT FOUND"
                 return False, self.last_error
 
@@ -101,8 +104,6 @@ class FCMService:
                     'title': title,
                     'body': body,
                     'messageType': message_type,
-                    'message_type': message_type,
-                    'recipientType': topic,
                     'timestamp': str(int(time.time() * 1000)),
                     'source': 'admin_panel',
                     'click_action': 'FLUTTER_NOTIFICATION_CLICK'
@@ -153,8 +154,6 @@ class FCMService:
                     'title': title,
                     'body': body,
                     'messageType': message_type,
-                    'message_type': message_type,
-                    'recipientType': recipient_type,
                     'timestamp': str(int(time.time() * 1000)),
                     'source': 'admin_panel',
                     'click_action': 'FLUTTER_NOTIFICATION_CLICK'

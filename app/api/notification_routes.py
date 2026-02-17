@@ -87,9 +87,6 @@ async def send_notification(
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     result = await notification_service.send_to_topic(title, body, topic, message_type)
-    if not result.get("success"):
-        raise HTTPException(status_code=500, detail=result.get("error"))
-    
     return result
 
 @router.post("/notifications/send-device", tags=["Notifications"])
@@ -106,9 +103,6 @@ async def send_device_notification(
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     result = await notification_service.send_to_device(title, body, token, recipient_type, message_type)
-    if not result.get("success"):
-        raise HTTPException(status_code=500, detail=result.get("error"))
-    
     return result
 
 @router.post("/notifications/broadcast/drivers", tags=["Notifications"])
