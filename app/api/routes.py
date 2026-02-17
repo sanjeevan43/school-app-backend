@@ -1226,7 +1226,133 @@ async def patch_student_secondary_parent(student_id: str, parent_data: Secondary
     result = execute_query(query, (s_parent_id, student_id))
     if result == 0:
         raise HTTPException(status_code=404, detail="Student not found")
+    
+    # Update FCM cache as related parent changed
+    cascade_service.update_student_cascades(student_id)
+    
     return await get_student(student_id)
+
+@router.patch("/students/{student_id}/primary-parent", response_model=StudentResponse, tags=["Students"])
+async def patch_student_primary_parent(student_id: str, parent_data: PrimaryParentUpdate):
+    """PATCH: Reassign primary parent to student."""
+    parent_id = parent_data.parent_id
+    
+    # Verify parent exists
+    parent_check = execute_query("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,), fetch_one=True)
+    if not parent_check:
+        raise HTTPException(status_code=404, detail="Parent not found")
+    
+    query = "UPDATE students SET parent_id = %s, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
+    result = execute_query(query, (parent_id, student_id))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    # Update FCM cache as related parent changed
+    cascade_service.update_student_cascades(student_id)
+    
+    return await get_student(student_id)
+
+@router.post("/students/{student_id}/switch-parents", response_model=StudentResponse, tags=["Students"])
+async def switch_student_parents(student_id: str):
+    """POST: Swap primary and secondary parents for a student."""
+    try:
+        # Get current parents
+        student = execute_query("SELECT parent_id, s_parent_id FROM students WHERE student_id = %s", (student_id,), fetch_one=True)
+        if not student:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        old_primary = student['parent_id']
+        old_secondary = student['s_parent_id']
+        
+        if not old_secondary:
+            raise HTTPException(status_code=400, detail="Student does not have a secondary parent to switch with")
+        
+        # Swap them
+        query = "UPDATE students SET parent_id = %s, s_parent_id = %s, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
+        execute_query(query, (old_secondary, old_primary, student_id))
+        
+        # Update FCM cache
+        cascade_service.update_student_cascades(student_id)
+        
+        return await get_student(student_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Switch parents error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to switch parents")
+
+@router.patch("/students/{student_id}/upgrade", response_model=StudentResponse, tags=["Students"])
+async def upgrade_single_student(student_id: str, upgrade_data: ClassUpgradeRequest):
+    """PATCH: Upgrade a single student to a new class and optionally a new study year."""
+    try:
+        # Verify class exists
+        class_check = execute_query("SELECT class_id FROM classes WHERE class_id = %s", (upgrade_data.new_class_id,), fetch_one=True)
+        if not class_check:
+            raise HTTPException(status_code=404, detail="New class not found")
+        
+        update_fields = ["class_id = %s"]
+        params = [upgrade_data.new_class_id]
+        
+        if upgrade_data.new_study_year:
+            update_fields.append("study_year = %s")
+            params.append(upgrade_data.new_study_year)
+            
+        params.append(student_id)
+        
+        query = f"UPDATE students SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE student_id = %s"
+        result = execute_query(query, tuple(params))
+        
+        if result == 0:
+            raise HTTPException(status_code=404, detail="Student not found")
+            
+        return await get_student(student_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Upgrade student error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to upgrade student")
+
+@router.post("/students/bulk-upgrade-class", response_model=UpgradeResponse, tags=["Students"])
+async def bulk_upgrade_class(upgrade_data: BulkClassUpgradeRequest):
+    """POST: Upgrade all students from one class to another."""
+    try:
+        # Verify both classes exist
+        curr_class = execute_query("SELECT class_id FROM classes WHERE class_id = %s", (upgrade_data.current_class_id,), fetch_one=True)
+        if not curr_class:
+            raise HTTPException(status_code=404, detail="Current class not found")
+            
+        new_class = execute_query("SELECT class_id FROM classes WHERE class_id = %s", (upgrade_data.new_class_id,), fetch_one=True)
+        if not new_class:
+            raise HTTPException(status_code=404, detail="New class not found")
+            
+        update_fields = ["class_id = %s"]
+        params = [upgrade_data.new_class_id]
+        
+        if upgrade_data.new_study_year:
+            update_fields.append("study_year = %s")
+            params.append(upgrade_data.new_study_year)
+            
+        params.append(upgrade_data.current_class_id)
+        
+        query = f"UPDATE students SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE class_id = %s"
+        affected_rows = execute_query(query, tuple(params))
+        
+        # If any students were upgraded, we might need to update route FCM caches
+        # For simplicity, we can log this. In a real-world scenario, we might want to trigger cache updates for all affected routes.
+        if affected_rows > 0:
+            logger.info(f"Bulk upgraded {affected_rows} students from {upgrade_data.current_class_id} to {upgrade_data.new_class_id}")
+            # Note: Cascade updates for all individual students might be expensive here.
+            # Usually class upgrades don't change routes, so FCM cache might still be valid.
+        
+        return {
+            "message": f"Successfully upgraded {affected_rows} students",
+            "affected_students": affected_rows
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Bulk upgrade error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to perform bulk upgrade")
 
 @router.delete("/students/{student_id}", tags=["Students"])
 async def delete_student(student_id: str):

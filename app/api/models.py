@@ -363,6 +363,22 @@ class StudentUpdate(BaseModel):
 class SecondaryParentUpdate(BaseModel):
     s_parent_id: Optional[str] = Field(None, description="Secondary Parent ID (UUID)")
 
+class PrimaryParentUpdate(BaseModel):
+    parent_id: str = Field(..., description="Primary Parent ID (UUID)")
+
+class ClassUpgradeRequest(BaseModel):
+    new_class_id: str = Field(..., description="The new class ID to move the student(s) to")
+    new_study_year: Optional[str] = Field(None, description="The new study year (e.g., 2024-2025)")
+
+class BulkClassUpgradeRequest(BaseModel):
+    current_class_id: str = Field(..., description="The class ID currently assigned to students")
+    new_class_id: str = Field(..., description="The new class ID to move students to")
+    new_study_year: Optional[str] = Field(None, description="The new study year for all affected students")
+
+class UpgradeResponse(BaseModel):
+    message: str
+    affected_students: int
+
 class StudentResponse(BaseModel):
     student_id: str
     parent_id: str
