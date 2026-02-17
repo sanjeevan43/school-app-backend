@@ -322,14 +322,62 @@ Authorization: Bearer <your_token_here>
   "s_parent_id": "secondary_parent_uuid"
 }
 ```
-OR
+
+### 7. Reassign Primary Parent (PATCH)
+**Endpoint**: `PATCH /students/{student_id}/primary-parent`
+
+**Description**: Reassign the primary parent for a student.
+
+**Request Body**:
 ```json
 {
-  "s_parent_id": null
+  "parent_id": "primary_parent_uuid"
 }
 ```
 
-### 7. Delete Student
+### 8. Switch Primary and Secondary Parents (POST)
+**Endpoint**: `POST /students/{student_id}/switch-parents`
+
+**Description**: Swap the roles of primary and secondary parents for a student. Requires the student to already have a secondary parent assigned.
+
+**Response**: Updated student object.
+
+### 9. Upgrade Student Class (PATCH)
+**Endpoint**: `PATCH /students/{student_id}/upgrade`
+
+**Description**: Promote a student to a new class and optionally update their study year.
+
+**Request Body**:
+```json
+{
+  "new_class_id": "new_class_uuid",
+  "new_study_year": "2024-2025"
+}
+```
+
+### 10. Bulk Class Upgrade (POST)
+**Endpoint**: `POST /students/bulk-upgrade-class`
+
+**Description**: Move all students from one class to another class.
+
+**Request Body**:
+```json
+{
+  "current_class_id": "old_class_uuid",
+  "new_class_id": "new_class_uuid",
+  "new_study_year": "2024-2025"
+}
+```
+
+**Response**:
+```json
+{
+  "message": "Successfully upgraded 35 students",
+  "affected_students": 35
+}
+```
+
+### 11. Delete Student
 **Endpoint**: `DELETE /students/{student_id}`
 
 ---
