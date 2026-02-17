@@ -593,6 +593,27 @@ Authorization: Bearer <your_token_here>
 ### 6. Delete Class
 **Endpoint**: `DELETE /classes/{class_id}`
 
+### 7. Get Class FCM Tokens
+**Endpoint**: `GET /classes/{class_id}/fcm-tokens`
+
+**Description**: Retrieve all active parent FCM tokens for students enrolled in a specific class. Used for sending class-wide notifications.
+
+**Response**:
+```json
+{
+  "parents": [
+    {
+      "parent_id": "uuid",
+      "name": "Parent Name",
+      "phone": 9876543210,
+      "fcm_token": "token",
+      "parents_active_status": "ACTIVE"
+    }
+  ],
+  "count": 1
+}
+```
+
 ---
 
 ## Trips
