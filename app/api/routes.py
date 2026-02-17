@@ -1766,7 +1766,7 @@ async def create_fcm_token(fcm_token: FCMTokenCreate):
 @router.get("/fcm-tokens", tags=["FCM Tokens"])
 async def get_all_fcm_tokens():
     """Get all unique FCM tokens (flat list)"""
-    query = "SELECT DISTINCT fcm_token FROM fcm_tokens ORDER BY created_at DESC"
+    query = "SELECT DISTINCT fcm_token FROM fcm_tokens WHERE fcm_token IS NOT NULL"
     token_results = execute_query(query, fetch_all=True)
     fcm_tokens = list({row['fcm_token'] for row in token_results}) if token_results else []
     return {"fcm_tokens": fcm_tokens}

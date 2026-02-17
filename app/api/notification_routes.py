@@ -5,6 +5,8 @@ from app.api.models import *
 from app.core.database import execute_query
 from app.core.auth import create_access_token
 from datetime import datetime
+import asyncio
+import os
 
 router = APIRouter()
 
@@ -182,9 +184,6 @@ async def broadcast_parents(
         "message": f"Broadcast sent to {success_count} parents"
     }
 
-        
-    return {"success": True, "delivered_count": len(results), "total_found": len(tokens), "message": f"Broadcast sent to {len(results)} devices"}
-
 @router.post("/notifications/student/{student_id}", tags=["Notifications"])
 async def send_student_notification(
     student_id: str,
@@ -201,14 +200,15 @@ async def send_student_notification(
     if not tokens:
         raise HTTPException(status_code=404, detail="No FCM tokens found for this student")
     
-    results = []
     unique_tokens = {t['fcm_token'] for t in tokens if t['fcm_token']}
-    for t_val in unique_tokens:
-        res = await notification_service.send_to_device(title, body, t_val, recipient_type="student", message_type=message_type)
-        results.append(res)
-
+    tasks = [
+        notification_service.send_to_device(title, body, t_val, recipient_type="student", message_type=message_type)
+        for t_val in unique_tokens
+    ]
+    results = await asyncio.gather(*tasks)
     
-    return {"success": True, "details": results}
+    success_count = sum(1 for r in results if r.get("success"))
+    return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens)}
 
 @router.post("/notifications/parent/{parent_id}", tags=["Notifications"])
 async def send_parent_notification(
@@ -224,20 +224,20 @@ async def send_parent_notification(
     
     tokens = execute_query("SELECT fcm_token FROM fcm_tokens WHERE parent_id = %s", (parent_id,), fetch_all=True)
     if not tokens:
-        # Check parent table to be sure
         parent_check = execute_query("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,), fetch_one=True)
         if not parent_check:
             raise HTTPException(status_code=404, detail="Parent not found")
-        return {"success": True, "message": "No FCM tokens found for this parent", "details": []}
+        return {"success": True, "message": "No FCM tokens found for this parent", "delivered_count": 0}
     
-    results = []
     unique_tokens = {t['fcm_token'] for t in tokens if t['fcm_token']}
-    for t_val in unique_tokens:
-        res = await notification_service.send_to_device(title, body, t_val, recipient_type="parent", message_type=message_type)
-        results.append(res)
-
+    tasks = [
+        notification_service.send_to_device(title, body, t_val, recipient_type="parent", message_type=message_type)
+        for t_val in unique_tokens
+    ]
+    results = await asyncio.gather(*tasks)
     
-    return {"success": True, "details": results}
+    success_count = sum(1 for r in results if r.get("success"))
+    return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens)}
 
 @router.post("/notifications/route/{route_id}", tags=["Notifications"])
 async def send_route_notification(
@@ -261,12 +261,12 @@ async def send_route_notification(
     if not tokens:
         raise HTTPException(status_code=404, detail="No FCM tokens found for this route")
     
-    results = []
     unique_tokens = {t['fcm_token'] for t in tokens if t['fcm_token']}
-    for t_val in unique_tokens:
-        res = await notification_service.send_to_device(title, body, t_val, recipient_type="route", message_type=message_type)
-        results.append(res)
+    tasks = [
+        notification_service.send_to_device(title, body, t_val, recipient_type="route", message_type=message_type)
+        for t_val in unique_tokens
+    ]
+    results = await asyncio.gather(*tasks)
     
-    return {"success": True, "count": len(results)}
-
-
+    success_count = sum(1 for r in results if r.get("success"))
+    return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens)}
