@@ -382,7 +382,7 @@ class UpgradeResponse(BaseModel):
 
 class BulkPromoteRequest(BaseModel):
     new_study_year: Optional[str] = Field(None, description="New study year for all students (e.g., 2025-2026)")
-    max_class: Optional[int] = Field(12, description="Maximum class number. Students at this class will NOT be promoted (they graduate). Default: 12")
+    max_class: Optional[int] = Field(10, description="Maximum class number. Students at this class will be marked as GRADUATED. Default: 10")
     
 class BulkDemoteRequest(BaseModel):
     new_study_year: Optional[str] = Field(None, description="New study year for all students")
