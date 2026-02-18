@@ -5,6 +5,7 @@ from datetime import datetime, date
 import uuid
 import logging
 import json
+import re
 
 from app.core.database import get_db, execute_query
 from app.api.models import *
@@ -1426,6 +1427,239 @@ async def bulk_upgrade_class(upgrade_data: BulkClassUpgradeRequest):
     except Exception as e:
         logger.error(f"Bulk upgrade error: {e}")
         raise HTTPException(status_code=500, detail="Failed to perform bulk upgrade")
+
+@router.post("/classes/promote-all", response_model=BulkPromoteResponse, tags=["Classes"])
+async def promote_all_classes(promote_data: BulkPromoteRequest):
+    """
+    Promote ALL students to the next class (increment class number by 1).
+    
+    Example: Class 9 A → Class 10 A, Class 10 A → Class 11 A
+    
+    - Students in the max_class (default 12) will be marked as GRADUATED
+    - Each student keeps their same section (A stays in A, B stays in B)
+    - Optionally updates the study_year for all students
+    """
+    try:
+        max_class = promote_data.max_class or 12
+        
+        # Get all active classes ordered by class number descending (process highest first to avoid conflicts)
+        all_classes = execute_query(
+            "SELECT class_id, class_name, section FROM classes WHERE status = 'ACTIVE' ORDER BY class_name DESC, section",
+            fetch_all=True
+        )
+        
+        if not all_classes:
+            raise HTTPException(status_code=404, detail="No active classes found")
+        
+        details = []
+        total_promoted = 0
+        graduated_count = 0
+        classes_processed = 0
+        
+        for cls in all_classes:
+            class_name = cls['class_name']
+            section = cls['section']
+            class_id = cls['class_id']
+            
+            # Extract the numeric part from class_name (e.g., "10" from "10", "Class 9" from "Class  9")
+            import re
+            numbers = re.findall(r'\d+', class_name)
+            if not numbers:
+                details.append({"class": class_name, "section": section, "status": "skipped", "reason": "No numeric class number found"})
+                continue
+            
+            current_num = int(numbers[-1])  # Take the last number found
+            
+            # Check if at max class (graduation)
+            if current_num >= max_class:
+                # Count graduating students
+                grad_count = execute_query(
+                    "SELECT COUNT(*) as cnt FROM students WHERE class_id = %s AND student_status IN ('ACTIVE','CURRENT')",
+                    (class_id,), fetch_one=True
+                )
+                grad = grad_count['cnt'] if grad_count else 0
+                if grad > 0:
+                    # Mark students as GRADUATED
+                    execute_query(
+                        "UPDATE students SET student_status = 'GRADUATED', updated_at = CURRENT_TIMESTAMP WHERE class_id = %s AND student_status IN ('ACTIVE','CURRENT')",
+                        (class_id,)
+                    )
+                    graduated_count += grad
+                    details.append({"class": class_name, "section": section, "status": "graduated", "students": grad})
+                continue
+            
+            # Find the next class (current_num + 1) with the same section
+            next_num = current_num + 1
+            # Build search pattern - try exact match first
+            next_class = execute_query(
+                "SELECT class_id, class_name FROM classes WHERE section = %s AND status = 'ACTIVE' AND class_id != %s",
+                (section, class_id), fetch_all=True
+            )
+            
+            # Find the target class that has next_num in its name
+            target_class = None
+            for nc in (next_class or []):
+                nc_numbers = re.findall(r'\d+', nc['class_name'])
+                if nc_numbers and int(nc_numbers[-1]) == next_num:
+                    target_class = nc
+                    break
+            
+            if not target_class:
+                # Auto-create the next class if it doesn't exist
+                new_class_id = str(uuid.uuid4())
+                new_class_name = class_name.replace(str(current_num), str(next_num))
+                execute_query(
+                    "INSERT INTO classes (class_id, class_name, section) VALUES (%s, %s, %s)",
+                    (new_class_id, new_class_name, section)
+                )
+                target_class = {"class_id": new_class_id, "class_name": new_class_name}
+                details.append({"class": new_class_name, "section": section, "status": "auto_created"})
+            
+            # Move students from current class to target class
+            update_fields = "class_id = %s"
+            params = [target_class['class_id']]
+            
+            if promote_data.new_study_year:
+                update_fields += ", study_year = %s"
+                params.append(promote_data.new_study_year)
+            
+            params.append(class_id)
+            promoted = execute_query(
+                f"UPDATE students SET {update_fields}, updated_at = CURRENT_TIMESTAMP WHERE class_id = %s AND student_status IN ('ACTIVE','CURRENT')",
+                tuple(params)
+            )
+            
+            if promoted and promoted > 0:
+                total_promoted += promoted
+                classes_processed += 1
+                details.append({
+                    "from_class": class_name, 
+                    "to_class": target_class['class_name'],
+                    "section": section, 
+                    "status": "promoted", 
+                    "students_moved": promoted
+                })
+        
+        return {
+            "message": f"Promotion complete! {total_promoted} students promoted across {classes_processed} classes. {graduated_count} students graduated.",
+            "total_classes_processed": classes_processed,
+            "total_students_promoted": total_promoted,
+            "graduated_students": graduated_count,
+            "details": details
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Promote all classes error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to promote classes: {str(e)}")
+
+@router.post("/classes/demote-all", response_model=BulkPromoteResponse, tags=["Classes"])
+async def demote_all_classes(demote_data: BulkDemoteRequest):
+    """
+    Demote ALL students to the previous class (decrement class number by 1).
+    
+    Example: Class 10 A → Class 9 A, Class 11 A → Class 10 A
+    
+    - Students in the min_class (default 1) will NOT be demoted
+    - Each student keeps their same section
+    - Optionally updates the study_year for all students
+    """
+    try:
+        min_class = demote_data.min_class or 1
+        
+        # Get all active classes ordered by class number ascending (process lowest first)
+        all_classes = execute_query(
+            "SELECT class_id, class_name, section FROM classes WHERE status = 'ACTIVE' ORDER BY class_name ASC, section",
+            fetch_all=True
+        )
+        
+        if not all_classes:
+            raise HTTPException(status_code=404, detail="No active classes found")
+        
+        import re
+        details = []
+        total_demoted = 0
+        classes_processed = 0
+        
+        for cls in all_classes:
+            class_name = cls['class_name']
+            section = cls['section']
+            class_id = cls['class_id']
+            
+            numbers = re.findall(r'\d+', class_name)
+            if not numbers:
+                details.append({"class": class_name, "section": section, "status": "skipped", "reason": "No numeric class number found"})
+                continue
+            
+            current_num = int(numbers[-1])
+            
+            # Skip if at minimum class
+            if current_num <= min_class:
+                details.append({"class": class_name, "section": section, "status": "skipped", "reason": f"Already at minimum class ({min_class})"})
+                continue
+            
+            # Find the previous class (current_num - 1) with the same section  
+            prev_num = current_num - 1
+            prev_classes = execute_query(
+                "SELECT class_id, class_name FROM classes WHERE section = %s AND status = 'ACTIVE' AND class_id != %s",
+                (section, class_id), fetch_all=True
+            )
+            
+            target_class = None
+            for pc in (prev_classes or []):
+                pc_numbers = re.findall(r'\d+', pc['class_name'])
+                if pc_numbers and int(pc_numbers[-1]) == prev_num:
+                    target_class = pc
+                    break
+            
+            if not target_class:
+                # Auto-create the previous class if it doesn't exist
+                new_class_id = str(uuid.uuid4())
+                new_class_name = class_name.replace(str(current_num), str(prev_num))
+                execute_query(
+                    "INSERT INTO classes (class_id, class_name, section) VALUES (%s, %s, %s)",
+                    (new_class_id, new_class_name, section)
+                )
+                target_class = {"class_id": new_class_id, "class_name": new_class_name}
+                details.append({"class": new_class_name, "section": section, "status": "auto_created"})
+            
+            # Move students from current class to target class
+            update_fields = "class_id = %s"
+            params = [target_class['class_id']]
+            
+            if demote_data.new_study_year:
+                update_fields += ", study_year = %s"
+                params.append(demote_data.new_study_year)
+            
+            params.append(class_id)
+            demoted = execute_query(
+                f"UPDATE students SET {update_fields}, updated_at = CURRENT_TIMESTAMP WHERE class_id = %s AND student_status IN ('ACTIVE','CURRENT')",
+                tuple(params)
+            )
+            
+            if demoted and demoted > 0:
+                total_demoted += demoted
+                classes_processed += 1
+                details.append({
+                    "from_class": class_name,
+                    "to_class": target_class['class_name'],
+                    "section": section,
+                    "status": "demoted",
+                    "students_moved": demoted
+                })
+        
+        return {
+            "message": f"Demotion complete! {total_demoted} students demoted across {classes_processed} classes.",
+            "total_classes_processed": classes_processed,
+            "total_students_promoted": total_demoted,
+            "graduated_students": 0,
+            "details": details
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Demote all classes error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to demote classes: {str(e)}")
 
 @router.delete("/students/{student_id}", tags=["Students"])
 async def delete_student(student_id: str):

@@ -40,6 +40,7 @@ class ParentRole(str, Enum):
 class StudentStatus(str, Enum):
     CURRENT = "CURRENT"
     ALUMNI = "ALUMNI"
+    GRADUATED = "GRADUATED"
     DISCONTINUED = "DISCONTINUED"
     LONG_ABSENT = "LONG_ABSENT"
     ACTIVE = "ACTIVE"
@@ -378,6 +379,21 @@ class BulkClassUpgradeRequest(BaseModel):
 class UpgradeResponse(BaseModel):
     message: str
     affected_students: int
+
+class BulkPromoteRequest(BaseModel):
+    new_study_year: Optional[str] = Field(None, description="New study year for all students (e.g., 2025-2026)")
+    max_class: Optional[int] = Field(12, description="Maximum class number. Students at this class will NOT be promoted (they graduate). Default: 12")
+    
+class BulkDemoteRequest(BaseModel):
+    new_study_year: Optional[str] = Field(None, description="New study year for all students")
+    min_class: Optional[int] = Field(1, description="Minimum class number. Students at this class will NOT be demoted. Default: 1")
+
+class BulkPromoteResponse(BaseModel):
+    message: str
+    total_classes_processed: int
+    total_students_promoted: int
+    details: list
+    graduated_students: Optional[int] = 0
 
 class StudentResponse(BaseModel):
     student_id: str
