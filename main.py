@@ -15,7 +15,7 @@ app = FastAPI(
     version="1.0.0",
     servers=[
         {"url": "https://api.selvagam.com", "description": "Production Server"},
-        {"url": "http://localhost:8000", "description": "Local Development"}
+        {"url": "http://localhost:8080", "description": "Local Development"}
     ],
     docs_url="/docs",
     redoc_url="/redoc",
