@@ -1014,15 +1014,29 @@ async def create_class(class_data: ClassCreate):
 
 @router.get("/classes", response_model=List[ClassResponse], tags=["Classes"])
 async def get_all_classes():
-    """Get all classes"""
-    query = "SELECT * FROM classes ORDER BY class_name, section"
+    """Get all classes with student count"""
+    query = """
+    SELECT c.*, 
+           (SELECT COUNT(*) FROM students s 
+            WHERE s.class_id = c.class_id 
+            AND s.student_status IN ('ACTIVE', 'CURRENT')) as number_of_students
+    FROM classes c 
+    ORDER BY c.class_name, c.section
+    """
     classes = execute_query(query, fetch_all=True)
     return classes or []
 
 @router.get("/classes/{class_id}", response_model=ClassResponse, tags=["Classes"])
 async def get_class(class_id: str):
-    """Get class by ID"""
-    query = "SELECT * FROM classes WHERE class_id = %s"
+    """Get class by ID with student count"""
+    query = """
+    SELECT c.*, 
+           (SELECT COUNT(*) FROM students s 
+            WHERE s.class_id = c.class_id 
+            AND s.student_status IN ('ACTIVE', 'CURRENT')) as number_of_students
+    FROM classes c 
+    WHERE c.class_id = %s
+    """
     class_data = execute_query(query, (class_id,), fetch_one=True)
     if not class_data:
         raise HTTPException(status_code=404, detail="Class not found")

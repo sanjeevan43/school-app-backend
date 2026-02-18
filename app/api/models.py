@@ -269,6 +269,7 @@ class ClassResponse(BaseModel):
     class_name: str = Field(..., max_length=20)
     section: str = Field(..., max_length=10)
     status: UserStatus
+    number_of_students: int = 0
     created_at: datetime
     updated_at: datetime
 
