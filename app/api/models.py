@@ -57,6 +57,11 @@ class TripType(str, Enum):
     MORNING = "MORNING"
     EVENING = "EVENING"
 
+class Gender(str, Enum):
+    MALE = "MALE"
+    FEMALE = "FEMALE"
+    OTHER = "OTHER"
+
 class TripStatus(str, Enum):
     NOT_STARTED = "NOT_STARTED"
     ONGOING = "ONGOING"
@@ -310,6 +315,7 @@ class StudentBase(BaseModel):
     parent_id: str
     s_parent_id: Optional[str] = None
     name: str = Field(..., max_length=100)
+    gender: Gender
     dob: Optional[date] = None
     class_id: Optional[str] = None
     pickup_route_id: str
@@ -345,6 +351,7 @@ class StudentUpdate(BaseModel):
     parent_id: Optional[str] = None
     s_parent_id: Optional[str] = None
     name: Optional[str] = Field(None, max_length=100)
+    gender: Optional[Gender] = None
     dob: Optional[date] = None
     class_id: Optional[str] = None
     pickup_route_id: Optional[str] = None
@@ -400,6 +407,7 @@ class StudentResponse(BaseModel):
     parent_id: str
     s_parent_id: Optional[str] = None
     name: str = Field(..., max_length=100)
+    gender: Gender
     dob: Optional[date] = None
     class_id: Optional[str] = None
     pickup_route_id: str
