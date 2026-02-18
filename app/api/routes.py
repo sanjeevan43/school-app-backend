@@ -1493,13 +1493,13 @@ async def promote_all_classes(promote_data: BulkPromoteRequest):
                 )
                 grad = grad_count['cnt'] if grad_count else 0
                 if grad > 0:
-                    # Mark students as GRADUATED
+                    # Mark students as ALUMNI
                     execute_query(
-                        "UPDATE students SET student_status = 'GRADUATED', updated_at = CURRENT_TIMESTAMP WHERE class_id = %s AND student_status IN ('ACTIVE','CURRENT')",
+                        "UPDATE students SET student_status = 'ALUMNI', updated_at = CURRENT_TIMESTAMP WHERE class_id = %s AND student_status IN ('ACTIVE','CURRENT')",
                         (class_id,)
                     )
                     graduated_count += grad
-                    details.append({"class": class_name, "section": section, "status": "graduated", "students": grad})
+                    details.append({"class": class_name, "section": section, "status": "alumni", "students": grad})
                 continue
             
             # Find the next class (current_num + 1) with the same section

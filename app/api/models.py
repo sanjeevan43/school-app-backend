@@ -40,7 +40,6 @@ class ParentRole(str, Enum):
 class StudentStatus(str, Enum):
     CURRENT = "CURRENT"
     ALUMNI = "ALUMNI"
-    GRADUATED = "GRADUATED"
     DISCONTINUED = "DISCONTINUED"
     LONG_ABSENT = "LONG_ABSENT"
     ACTIVE = "ACTIVE"
