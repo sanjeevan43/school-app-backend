@@ -264,3 +264,49 @@ async def send_route_notification(
     
     success_count = sum(1 for r in results if r.get("success"))
     return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens)}
+
+from app.services.proximity_service import proximity_service
+
+@router.post("/bus-tracking/location", tags=["Proximity Alerts"])
+async def update_bus_location_proximity(location_data: BusLocationUpdate):
+    """Automatic bus tracking with proximity/geofence notifications (Ported from notification_app)"""
+    try:
+        result = await proximity_service.process_location_update(
+            trip_id=location_data.trip_id,
+            lat=location_data.latitude,
+            lng=location_data.longitude
+        )
+        return result
+    except Exception as e:
+        import traceback
+        logger.error(f"Proximity update error: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/trip/start", tags=["Proximity Alerts"])
+async def start_trip_v2(trip_id: str, route_id: str, x_admin_key: str = Header(..., alias="x-admin-key")):
+    """Start trip and notify parents (Ported from notification_app)"""
+    if x_admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return await proximity_service.start_trip(trip_id, route_id)
+
+@router.post("/trip/complete", tags=["Proximity Alerts"])
+async def complete_trip_v2(trip_id: str, route_id: str, x_admin_key: str = Header(..., alias="x-admin-key")):
+    """Complete trip and notify parents (Ported from notification_app)"""
+    if x_admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return await proximity_service.complete_trip(trip_id, route_id)
+
+@router.post("/notifications/manual-send", tags=["Proximity Alerts"])
+async def manual_send(
+    title: str = Body(...),
+    message: str = Body(...),
+    tokens: List[str] = Body(...),
+    x_admin_key: str = Header(..., alias="x-admin-key")
+):
+    """Manual send to specific tokens (Ported from notification_app)"""
+    if x_admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return await notification_service.broadcast_to_tokens(tokens, title, message)
+
+

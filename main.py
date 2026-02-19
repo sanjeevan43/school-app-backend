@@ -31,6 +31,7 @@ app = FastAPI(
         {"name": "Classes", "description": "School class management"},
         {"name": "Trips", "description": "Daily bus trip management"},
         {"name": "Bus Tracking", "description": "Real-time bus tracking"},
+        {"name": "Proximity Alerts", "description": "Advanced geofence-based notification logic"},
         {"name": "FCM Tokens", "description": "Push notifications"},
         {"name": "Encryption", "description": "Data encryption"},
         {"name": "Error Handling", "description": "Error logs"}

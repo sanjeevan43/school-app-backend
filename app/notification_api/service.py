@@ -2,7 +2,9 @@ import os
 import json
 import time
 import asyncio
+from typing import List, Dict, Any
 from pathlib import Path
+
 import firebase_admin
 from firebase_admin import credentials, messaging
 import logging
@@ -209,5 +211,20 @@ class FCMService:
             logger.error(f"FCM Force Logout Error: {error}")
             return {"success": False, "error": str(error)}
 
+    async def broadcast_to_tokens(self, tokens: List[str], title: str, body: str, data: Dict[str, Any] = None):
+        if not tokens:
+            return {"success": True, "count": 0}
+            
+        tasks = [
+            self.send_to_device(title, body, token)
+            for token in set(tokens) if token
+        ]
+        
+        results = await asyncio.gather(*tasks)
+        success_count = sum(1 for r in results if r.get("success"))
+        
+        return {"success": True, "delivered": success_count, "total": len(tokens)}
+
 # Global instance
 notification_service = FCMService()
+

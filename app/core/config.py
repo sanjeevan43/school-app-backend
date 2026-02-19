@@ -26,9 +26,15 @@ class Settings(BaseSettings):
     # FCM Configuration
     FCM_SERVER_KEY: str = "your-fcm-server-key"
     
+    # Geofence Notification Configuration
+    GEOFENCE_RADIUS: int = 500
+    MAIN_BACKEND_URL: str = "https://api.selvagam.com/api/v1"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # Allow extra fields in .env without failing
+
 
 @lru_cache()
 def get_settings():
