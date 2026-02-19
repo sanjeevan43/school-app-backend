@@ -136,7 +136,7 @@ class FCMService:
             logger.error(f"FCM Topic Send Error: {error}")
             return {"success": False, "error": str(error)}
 
-    async def send_to_device(self, title: str, body: str, token: str, recipient_type: str = 'parent', message_type: str = 'audio'):
+    async def send_to_device(self, title: str, body: str, token: str, recipient_type: str = 'parent', message_type: str = 'audio', data: Dict[str, Any] = None):
         if not token or token == "undefined" or token == "null":
             return {"success": False, "error": "Invalid token"}
             
@@ -148,18 +148,26 @@ class FCMService:
 
             sound, channel_id = self._get_sound_config(message_type)
 
+            # Build data payload
+            fcm_data = {
+                'type': 'admin_notification',
+                'title': title,
+                'body': body,
+                'messageType': message_type,
+                'timestamp': str(int(time.time() * 1000)),
+                'source': 'admin_panel',
+                'click_action': 'FLUTTER_NOTIFICATION_CLICK'
+            }
+            
+            # Merge custom data
+            if data:
+                for k, v in data.items():
+                    fcm_data[str(k)] = str(v)
+
             message = messaging.Message(
                 token=token,
                 notification=messaging.Notification(title=title, body=body),
-                data={
-                    'type': 'admin_notification',
-                    'title': title,
-                    'body': body,
-                    'messageType': message_type,
-                    'timestamp': str(int(time.time() * 1000)),
-                    'source': 'admin_panel',
-                    'click_action': 'FLUTTER_NOTIFICATION_CLICK'
-                },
+                data=fcm_data,
                 android=messaging.AndroidConfig(
                     priority='high',
                     notification=messaging.AndroidNotification(
@@ -180,6 +188,7 @@ class FCMService:
             # Using loop.run_in_executor to avoid blocking the event loop with the sync messaging.send
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(None, lambda: messaging.send(message))
+            logger.info(f"FCM: Sent to device {token[:10]}... | ID: {response}")
             return {"success": True, "messageId": response}
         except Exception as error:
             logger.error(f"FCM Device Send Error for token {token[:10]}...: {error}")
@@ -213,10 +222,10 @@ class FCMService:
 
     async def broadcast_to_tokens(self, tokens: List[str], title: str, body: str, data: Dict[str, Any] = None):
         if not tokens:
-            return {"success": True, "count": 0}
+            return {"success": True, "delivered": 0, "total": 0}
             
         tasks = [
-            self.send_to_device(title, body, token)
+            self.send_to_device(title, body, token, data=data)
             for token in set(tokens) if token
         ]
         
@@ -224,6 +233,7 @@ class FCMService:
         success_count = sum(1 for r in results if r.get("success"))
         
         return {"success": True, "delivered": success_count, "total": len(tokens)}
+
 
 # Global instance
 notification_service = FCMService()
