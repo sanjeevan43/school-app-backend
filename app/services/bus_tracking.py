@@ -32,7 +32,7 @@ class BusTrackingService:
     
     def get_students_for_route_stop(self, route_id: str, stop_order: int, trip_type: str) -> List[Dict]:
         """Get students for a specific route stop based on trip type"""
-        if trip_type == "MORNING":
+        if trip_type == "PICKUP":
             query = """
             SELECT s.student_id, s.name, ft.fcm_token, rs.stop_name
             FROM students s
@@ -42,7 +42,7 @@ class BusTrackingService:
             AND s.transport_status = 'ACTIVE' AND s.student_status = 'CURRENT'
             AND s.is_transport_user = True
             """
-        else:  # EVENING
+        else:  # DROP
             query = """
             SELECT s.student_id, s.name, ft.fcm_token, rs.stop_name
             FROM students s
@@ -88,7 +88,7 @@ class BusTrackingService:
                 return {"success": False, "message": "Trip not found or not ongoing"}
             
             # Get route stops based on trip type
-            order_field = "pickup_stop_order" if trip['trip_type'] == "MORNING" else "drop_stop_order"
+            order_field = "pickup_stop_order" if trip['trip_type'] == "PICKUP" else "drop_stop_order"
             stops_query = f"""
             SELECT stop_id, stop_name, latitude, longitude, {order_field} as stop_order
             FROM route_stops 

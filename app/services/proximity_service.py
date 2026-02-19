@@ -36,19 +36,21 @@ class ProximityTrackingService:
             logger.error(f"Error fetching route tokens: {e}")
             return []
 
-    async def fetch_route_stops(self, route_id: str) -> List[Dict]:
-        """Fetch stops for a route with coordinates"""
+    async def fetch_route_stops(self, route_id: str, trip_type: str = "PICKUP") -> List[Dict]:
+        """Fetch stops for a route with coordinates, aware of trip type"""
+        order_field = "pickup_stop_order" if trip_type == "PICKUP" else "drop_stop_order"
         try:
-            query = """
-            SELECT stop_id, stop_name, latitude, longitude, pickup_stop_order
+            query = f"""
+            SELECT stop_id, stop_name, latitude, longitude, {order_field} as stop_order
             FROM route_stops
             WHERE route_id = %s
-            ORDER BY pickup_stop_order
+            ORDER BY {order_field}
             """
             return execute_query(query, (route_id,), fetch_all=True) or []
         except Exception as e:
             logger.error(f"Error fetching route stops: {e}")
             return []
+
 
     async def process_location_update(self, trip_id: str, lat: float, lng: float):
         """Core proximity logic moved from notification_app"""
@@ -58,13 +60,15 @@ class ProximityTrackingService:
         if trip_id not in self.active_trips:
             try:
                 # Get trip details from DB
-                trip_query = "SELECT route_id FROM trips WHERE trip_id = %s"
+                trip_query = "SELECT route_id, trip_type FROM trips WHERE trip_id = %s"
                 trip = execute_query(trip_query, (trip_id,), fetch_one=True)
                 if not trip:
                     return {"success": False, "message": "Trip not found"}
                 
                 route_id = trip['route_id']
-                stops = await self.fetch_route_stops(route_id)
+                trip_type = trip['trip_type']
+                stops = await self.fetch_route_stops(route_id, trip_type)
+
                 
                 self.active_trips[trip_id] = {
                     "trip_id": trip_id,

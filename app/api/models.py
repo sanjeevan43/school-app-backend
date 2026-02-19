@@ -54,8 +54,8 @@ class TransportStatus(str, Enum):
 
 
 class TripType(str, Enum):
-    MORNING = "MORNING"
-    EVENING = "EVENING"
+    PICKUP = "PICKUP"
+    DROP = "DROP"
 
 class Gender(str, Enum):
     MALE = "MALE"
