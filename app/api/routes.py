@@ -635,7 +635,8 @@ async def create_route_stop(route_stop: RouteStopCreate):
                 # 6. Shift existing stops
                 shift_query = """
                 UPDATE route_stops
-                SET pickup_stop_order = pickup_stop_order + 1
+                SET pickup_stop_order = pickup_stop_order + 1,
+                    drop_stop_order = drop_stop_order + 1
                 WHERE route_id = %s
                 AND pickup_stop_order >= %s
                 """
@@ -690,13 +691,31 @@ async def get_route_stop(stop_id: str):
 
 @router.put("/route-stops/{stop_id}", response_model=RouteStopResponse, tags=["Route Stops"])
 async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
-    """Update route stop and reorder if order changed"""
+    """Update route stop and reorder with transactional shifting if order changed"""
     try:
         # Get old data for cascade comparison and route_id
         old_stop = execute_query("SELECT * FROM route_stops WHERE stop_id = %s", (stop_id,), fetch_one=True)
         if not old_stop:
             raise HTTPException(status_code=404, detail="Route stop not found")
         
+        # If order is being updated, validate it
+        if stop_update.pickup_stop_order is not None and stop_update.pickup_stop_order != old_stop['pickup_stop_order']:
+            new_order = stop_update.pickup_stop_order
+            
+            # Validation: new_order must be within [1, max_order]
+            max_order_data = execute_query(
+                "SELECT MAX(pickup_stop_order) as max_order FROM route_stops WHERE route_id = %s",
+                (old_stop['route_id'],),
+                fetch_one=True
+            )
+            max_order = max_order_data['max_order'] if max_order_data and max_order_data['max_order'] else 1
+            
+            if new_order < 1 or new_order > max_order:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Invalid order. Order must be between 1 and {max_order}."
+                )
+
         update_fields = []
         values = []
         
@@ -708,35 +727,40 @@ async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
         if not update_fields:
             raise HTTPException(status_code=400, detail="No fields to update")
         
-        values.append(stop_id)
-        query = f"UPDATE route_stops SET {', '.join(update_fields)} WHERE stop_id = %s"
+        # Start database transaction for reordering if needed
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                # 1. Update the stop itself
+                update_query = f"UPDATE route_stops SET {', '.join(update_fields)} WHERE stop_id = %s"
+                cursor.execute(update_query, tuple(values + [stop_id]))
+                
+                # 2. If order was updated, handle the shifting of other stops
+                if stop_update.pickup_stop_order is not None and stop_update.pickup_stop_order != old_stop['pickup_stop_order']:
+                    new_order = stop_update.pickup_stop_order
+                    old_order = old_stop['pickup_stop_order']
+                    
+                    if new_order < old_order:
+                        # Moving up: Shift stops in between DOWN
+                        shift_query = """
+                        UPDATE route_stops 
+                        SET pickup_stop_order = pickup_stop_order + 1, 
+                            drop_stop_order = drop_stop_order + 1 
+                        WHERE route_id = %s AND pickup_stop_order >= %s 
+                        AND pickup_stop_order < %s AND stop_id != %s
+                        """
+                        cursor.execute(shift_query, (old_stop['route_id'], new_order, old_order, stop_id))
+                    else:
+                        # Moving down: Shift stops in between UP
+                        shift_query = """
+                        UPDATE route_stops 
+                        SET pickup_stop_order = pickup_stop_order - 1, 
+                            drop_stop_order = drop_stop_order - 1 
+                        WHERE route_id = %s AND pickup_stop_order > %s 
+                        AND pickup_stop_order <= %s AND stop_id != %s
+                        """
+                        cursor.execute(shift_query, (old_stop['route_id'], old_order, new_order, stop_id))
         
-        result = execute_query(query, tuple(values))
-        if result == 0:
-            raise HTTPException(status_code=404, detail="Route stop not found")
-        
-        # If order was updated, handle the shifting of other stops
-        if stop_update.pickup_stop_order is not None and stop_update.pickup_stop_order != old_stop['pickup_stop_order']:
-            new_order = stop_update.pickup_stop_order
-            old_order = old_stop['pickup_stop_order']
-            
-            if new_order < old_order:
-                # Moving up: Shift stops in between DOWN
-                execute_query(
-                    "UPDATE route_stops SET pickup_stop_order = pickup_stop_order + 1, drop_stop_order = drop_stop_order + 1 WHERE route_id = %s AND pickup_stop_order >= %s AND pickup_stop_order < %s AND stop_id != %s",
-                    (old_stop['route_id'], new_order, old_order, stop_id)
-                )
-            else:
-                # Moving down: Shift stops in between UP
-                execute_query(
-                    "UPDATE route_stops SET pickup_stop_order = pickup_stop_order - 1, drop_stop_order = drop_stop_order - 1 WHERE route_id = %s AND pickup_stop_order > %s AND pickup_stop_order <= %s AND stop_id != %s",
-                    (old_stop['route_id'], old_order, new_order, stop_id)
-                )
-            
-            # Normalize all to be sure
-            _reorder_route_stops(old_stop['route_id'])
-        
-        # Trigger cascade updates
+        # 3. Trigger cascade updates
         new_data = stop_update.dict(exclude_unset=True)
         cascade_service.update_route_stop_cascades(stop_id, old_stop, new_data)
         
@@ -745,74 +769,52 @@ async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
         raise
     except Exception as e:
         logger.error(f"Update route stop error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update route stop")
+        raise HTTPException(status_code=500, detail=f"Failed to update route stop: {str(e)}")
 
 @router.delete("/route-stops/{stop_id}", tags=["Route Stops"])
 async def delete_route_stop(stop_id: str):
-    """Delete route stop and reorder remaining stops"""
+    """Delete route stop and reorder remaining stops using transactional shifting"""
     try:
-        # Get stop data for route_id
+        # Get stop data for route_id and current order
         stop_data = execute_query("SELECT * FROM route_stops WHERE stop_id = %s", (stop_id,), fetch_one=True)
         if not stop_data:
             raise HTTPException(status_code=404, detail="Route stop not found")
         
         route_id = stop_data['route_id']
+        deleted_order = stop_data['pickup_stop_order']
         
         # Perform cascade cleanup before delete
         cascade_service.delete_cascades("route_stops", stop_id, stop_data)
         
-        # Delete route stop
-        query = "DELETE FROM route_stops WHERE stop_id = %s"
-        result = execute_query(query, (stop_id,))
-        if result == 0:
-            raise HTTPException(status_code=404, detail="Route stop not found")
+        # Start database transaction
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                # 1. Delete route stop
+                cursor.execute("DELETE FROM route_stops WHERE stop_id = %s", (stop_id,))
+                
+                # 2. Shift remaining stops down (pickup_stop_order - 1)
+                shift_query = """
+                UPDATE route_stops
+                SET pickup_stop_order = pickup_stop_order - 1,
+                    drop_stop_order = drop_stop_order - 1
+                WHERE route_id = %s
+                AND pickup_stop_order > %s
+                """
+                cursor.execute(shift_query, (route_id, deleted_order))
+                
+                # Transaction commits automatically via get_db() context manager
         
-        # Reorder remaining stops
-        _reorder_route_stops(route_id)
+        # 3. Update FCM cache for the route
+        cascade_service.update_route_fcm_cache(route_id)
         
-        return {"message": "Route stop deleted and route reordered successfully"}
+        return {"message": "Route stop deleted and route shifted successfully"}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Delete route stop error: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete route stop")
 
-def _reorder_route_stops(route_id: str):
-    """Helper to reorder stops sequentially for a route (1, 2, 3...)"""
-    try:
-        # Fetch stops ordered by current pickup order
-        stops = execute_query(
-            "SELECT stop_id, pickup_stop_order FROM route_stops WHERE route_id = %s ORDER BY pickup_stop_order ASC, created_at ASC",
-            (route_id,),
-            fetch_all=True
-        )
-        
-        if not stops:
-            return
-            
-        for i, stop in enumerate(stops):
-            new_order = i + 1
-            # Update both pickup and drop orders to keep them in sync for now
-            execute_query(
-                "UPDATE route_stops SET pickup_stop_order = %s, drop_stop_order = %s WHERE stop_id = %s",
-                (new_order, new_order, stop['stop_id'])
-            )
-            
-        # Update FCM cache for the route
-        cascade_service.update_route_fcm_cache(route_id)
-        
-    except Exception as e:
-        logger.error(f"Error in _reorder_route_stops for route {route_id}: {e}")
-
-@router.post("/routes/{route_id}/reorder", tags=["Route Stops"])
-async def manual_reorder_route(route_id: str):
-    """Manually trigger reordering of all stops in a route"""
-    try:
-        _reorder_route_stops(route_id)
-        return {"message": "Route stops reordered successfully"}
-    except Exception as e:
-        logger.error(f"Manual reorder error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to reorder route stops")
+# Removed _reorder_route_stops and manual_reorder_route since shifting is now transactional and robust.
 
 # =====================================================
 # BUS ENDPOINTS
