@@ -1451,7 +1451,7 @@ async def promote_all_classes(promote_data: BulkPromoteRequest):
     
     Example: Class 9 A → Class 10 A, Class 10 A → Class 11 A
     
-    - Students in the max_class (default 12) will be marked as GRADUATED
+    - Students in the max_class (default 12) will be marked as ALUMNI
     - Each student keeps their same section (A stays in A, B stays in B)
     - Optionally updates the study_year for all students
     """
@@ -1557,7 +1557,7 @@ async def promote_all_classes(promote_data: BulkPromoteRequest):
                 })
         
         return {
-            "message": f"Promotion complete! {total_promoted} students promoted across {classes_processed} classes. {graduated_count} students graduated.",
+            "message": f"Promotion complete! {total_promoted} students promoted across {classes_processed} classes. {graduated_count} students moved to ALUMNI status.",
             "total_classes_processed": classes_processed,
             "total_students_promoted": total_promoted,
             "graduated_students": graduated_count,
