@@ -445,12 +445,12 @@ async def create_driver(driver: DriverCreate):
         driver_id = str(uuid.uuid4())
         query = """
         INSERT INTO drivers (driver_id, name, phone, email, licence_number, licence_expiry, 
-                           password_hash, fcm_token)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                           password_hash, photo_url, fcm_token)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         execute_query(query, (driver_id, driver.name, driver.phone, driver.email,
                              driver.licence_number, driver.licence_expiry, driver.password,
-                             driver.fcm_token))
+                             driver.photo_url, driver.fcm_token))
         
         return await get_driver(driver_id)
     except Exception as e:
@@ -470,10 +470,10 @@ async def get_all_drivers(status: DriverStatus = DriverStatus.ALL, active_filter
         params.append(status.value)
     
     if conditions:
-        query = f"SELECT driver_id, name, phone, email, licence_number, licence_expiry, status, fcm_token, created_at, updated_at FROM drivers WHERE {' AND '.join(conditions)} ORDER BY name"
+        query = f"SELECT driver_id, name, phone, email, licence_number, licence_expiry, photo_url, status, fcm_token, created_at, updated_at FROM drivers WHERE {' AND '.join(conditions)} ORDER BY name"
         drivers = execute_query(query, tuple(params), fetch_all=True)
     else:
-        query = "SELECT driver_id, name, phone, email, licence_number, licence_expiry, status, fcm_token, created_at, updated_at FROM drivers ORDER BY name"
+        query = "SELECT driver_id, name, phone, email, licence_number, licence_expiry, photo_url, status, fcm_token, created_at, updated_at FROM drivers ORDER BY name"
         drivers = execute_query(query, fetch_all=True)
     return drivers or []
 
@@ -481,7 +481,7 @@ async def get_all_drivers(status: DriverStatus = DriverStatus.ALL, active_filter
 @router.get("/drivers/{driver_id}", response_model=DriverResponse, tags=["Drivers"])
 async def get_driver(driver_id: str):
     """Get driver by ID"""
-    query = "SELECT driver_id, name, phone, email, licence_number, licence_expiry, status, fcm_token, created_at, updated_at FROM drivers WHERE driver_id = %s"
+    query = "SELECT driver_id, name, phone, email, licence_number, licence_expiry, photo_url, status, fcm_token, created_at, updated_at FROM drivers WHERE driver_id = %s"
     driver = execute_query(query, (driver_id,), fetch_one=True)
     if not driver:
         raise HTTPException(status_code=404, detail="Driver not found")
