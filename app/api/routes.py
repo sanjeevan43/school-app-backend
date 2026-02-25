@@ -105,10 +105,10 @@ async def create_admin(admin: AdminCreate):
 async def get_all_admins(status: UserStatus = UserStatus.ALL):
     """Get all admins"""
     if status == UserStatus.ALL:
-        query = "SELECT * FROM admins ORDER BY created_at DESC"
+        query = "SELECT admin_id, phone, email, name, status, last_login_at, created_at, updated_at FROM admins ORDER BY created_at DESC"
         admins = execute_query(query, fetch_all=True)
     else:
-        query = "SELECT * FROM admins WHERE status = %s ORDER BY created_at DESC"
+        query = "SELECT admin_id, phone, email, name, status, last_login_at, created_at, updated_at FROM admins WHERE status = %s ORDER BY created_at DESC"
         admins = execute_query(query, (status.value,), fetch_all=True)
     return admins or []
 
@@ -116,7 +116,7 @@ async def get_all_admins(status: UserStatus = UserStatus.ALL):
 @router.get("/admins/{admin_id}", response_model=AdminResponse, tags=["Admins"])
 async def get_admin(admin_id: str):
     """Get admin by ID"""
-    query = "SELECT * FROM admins WHERE admin_id = %s"
+    query = "SELECT admin_id, phone, email, name, status, last_login_at, created_at, updated_at FROM admins WHERE admin_id = %s"
     admin = execute_query(query, (admin_id,), fetch_one=True)
     if not admin:
         raise HTTPException(status_code=404, detail="Admin not found")
@@ -193,9 +193,9 @@ async def create_parent(parent: ParentCreate):
 async def get_all_parents(active_filter: ActiveFilter = ActiveFilter.ALL):
     """Get all parents, defaults to ALL"""
     if active_filter == ActiveFilter.ACTIVE_ONLY:
-        query = "SELECT * FROM parents WHERE parents_active_status = 'ACTIVE' ORDER BY created_at DESC"
+        query = "SELECT parent_id, phone, email, name, parent_role, door_no, street, city, district, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents WHERE parents_active_status = 'ACTIVE' ORDER BY created_at DESC"
     else:
-        query = "SELECT * FROM parents ORDER BY created_at DESC"
+        query = "SELECT parent_id, phone, email, name, parent_role, door_no, street, city, district, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents ORDER BY created_at DESC"
     parents = execute_query(query, fetch_all=True)
     return parents or []
 
@@ -203,7 +203,7 @@ async def get_all_parents(active_filter: ActiveFilter = ActiveFilter.ALL):
 @router.get("/parents/{parent_id}", response_model=ParentResponse, tags=["Parents"])
 async def get_parent(parent_id: str):
     """Get parent by ID"""
-    query = "SELECT * FROM parents WHERE parent_id = %s"
+    query = "SELECT parent_id, phone, email, name, parent_role, door_no, street, city, district, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents WHERE parent_id = %s"
     parent = execute_query(query, (parent_id,), fetch_one=True)
     if not parent:
         raise HTTPException(status_code=404, detail="Parent not found")
@@ -214,7 +214,7 @@ async def update_parent(parent_id: str, parent_update: ParentUpdate):
     """Update parent with cascade updates"""
     try:
         # Get old data for cascade comparison
-        old_parent = execute_query("SELECT * FROM parents WHERE parent_id = %s", (parent_id,), fetch_one=True)
+        old_parent = execute_query("SELECT parent_id, phone, email, name, parents_active_status FROM parents WHERE parent_id = %s", (parent_id,), fetch_one=True)
         if not old_parent:
             raise HTTPException(status_code=404, detail="Parent not found")
         
@@ -345,7 +345,7 @@ async def delete_parent(parent_id: str):
     """Delete parent with cascade cleanup"""
     try:
         # Get parent data for cascade cleanup
-        parent_data = execute_query("SELECT * FROM parents WHERE parent_id = %s", (parent_id,), fetch_one=True)
+        parent_data = execute_query("SELECT parent_id, phone, email, name FROM parents WHERE parent_id = %s", (parent_id,), fetch_one=True)
         if not parent_data:
             raise HTTPException(status_code=404, detail="Parent not found")
         
@@ -401,10 +401,10 @@ async def get_all_drivers(status: DriverStatus = DriverStatus.ALL, active_filter
         params.append(status.value)
     
     if conditions:
-        query = f"SELECT * FROM drivers WHERE {' AND '.join(conditions)} ORDER BY name"
+        query = f"SELECT driver_id, name, phone, email, licence_number, licence_expiry, status, fcm_token, created_at, updated_at FROM drivers WHERE {' AND '.join(conditions)} ORDER BY name"
         drivers = execute_query(query, tuple(params), fetch_all=True)
     else:
-        query = "SELECT * FROM drivers ORDER BY name"
+        query = "SELECT driver_id, name, phone, email, licence_number, licence_expiry, status, fcm_token, created_at, updated_at FROM drivers ORDER BY name"
         drivers = execute_query(query, fetch_all=True)
     return drivers or []
 
@@ -412,7 +412,7 @@ async def get_all_drivers(status: DriverStatus = DriverStatus.ALL, active_filter
 @router.get("/drivers/{driver_id}", response_model=DriverResponse, tags=["Drivers"])
 async def get_driver(driver_id: str):
     """Get driver by ID"""
-    query = "SELECT * FROM drivers WHERE driver_id = %s"
+    query = "SELECT driver_id, name, phone, email, licence_number, licence_expiry, status, fcm_token, created_at, updated_at FROM drivers WHERE driver_id = %s"
     driver = execute_query(query, (driver_id,), fetch_one=True)
     if not driver:
         raise HTTPException(status_code=404, detail="Driver not found")
@@ -1949,7 +1949,10 @@ async def get_students_by_route(route_id: str, active_filter: ActiveFilter = Act
 async def get_parents_by_route(route_id: str):
     """Get all parents who have students on a specific route"""
     query = """
-    SELECT DISTINCT p.* FROM parents p
+    SELECT DISTINCT p.parent_id, p.phone, p.email, p.name, p.parent_role, p.door_no, p.street, 
+                    p.city, p.district, p.pincode, p.parents_active_status, p.last_login_at, 
+                    p.created_at, p.updated_at 
+    FROM parents p
     JOIN students s ON (p.parent_id = s.parent_id OR p.parent_id = s.s_parent_id)
     WHERE s.pickup_route_id = %s OR s.drop_route_id = %s
     ORDER BY p.name
