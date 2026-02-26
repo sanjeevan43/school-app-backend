@@ -201,6 +201,37 @@ async def reset_admin_password_by_phone(reset_data: PasswordResetByPhone):
         raise HTTPException(status_code=404, detail="Admin with this phone number not found")
     return {"message": "Admin password reset successfully"}
 
+@router.patch("/admins/{admin_id}/reset-default-password", tags=["Admins"])
+async def reset_admin_default_password(admin_id: str):
+    """Reset admin password to default (First 4 of name + @ + Last 4 of phone). No request body needed."""
+    try:
+        # Step 1: Fetch user details
+        query = "SELECT name, phone FROM admins WHERE admin_id = %s"
+        admin = execute_query(query, (admin_id,), fetch_one=True)
+        if not admin:
+            raise HTTPException(status_code=404, detail="Admin not found")
+        
+        # Step 2 & 3: Generate default password
+        try:
+            default_password = generate_default_password(admin['name'], admin['phone'])
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        
+        # Step 4: Hash the password
+        hashed_password = get_password_hash(default_password)
+        
+        # Step 5: Update database
+        update_query = "UPDATE admins SET password_hash = %s, updated_at = CURRENT_TIMESTAMP WHERE admin_id = %s"
+        execute_query(update_query, (hashed_password, admin_id))
+        
+        # Step 6: Return success (no password in response)
+        return {"message": "Admin password reset to default successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Reset admin default password error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reset admin password: {str(e)}")
+
 # =====================================================
 # PARENT ENDPOINTS
 # =====================================================
@@ -377,6 +408,37 @@ async def reset_parent_password_by_phone(reset_data: PasswordResetByPhone):
     if result == 0:
         raise HTTPException(status_code=404, detail="Parent with this phone number not found")
     return {"message": "Parent password reset successfully"}
+
+@router.patch("/parents/{parent_id}/reset-default-password", tags=["Parents"])
+async def reset_parent_default_password(parent_id: str):
+    """Reset parent password to default (First 4 of name + @ + Last 4 of phone). No request body needed."""
+    try:
+        # Step 1: Fetch user details
+        query = "SELECT name, phone FROM parents WHERE parent_id = %s"
+        parent = execute_query(query, (parent_id,), fetch_one=True)
+        if not parent:
+            raise HTTPException(status_code=404, detail="Parent not found")
+        
+        # Step 2 & 3: Generate default password
+        try:
+            default_password = generate_default_password(parent['name'], parent['phone'])
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        
+        # Step 4: Hash the password
+        hashed_password = get_password_hash(default_password)
+        
+        # Step 5: Update database
+        update_query = "UPDATE parents SET password_hash = %s, updated_at = CURRENT_TIMESTAMP WHERE parent_id = %s"
+        execute_query(update_query, (hashed_password, parent_id))
+        
+        # Step 6: Return success (no password in response)
+        return {"message": "Parent password reset to default successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Reset parent default password error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reset parent password: {str(e)}")
 
 @router.get("/parents/{parent_id}/students", response_model=List[StudentResponse], tags=["Parents"])
 async def get_parent_students(parent_id: str):
@@ -657,6 +719,37 @@ async def reset_driver_password_by_phone(reset_data: PasswordResetByPhone):
     if result == 0:
         raise HTTPException(status_code=404, detail="Driver with this phone number not found")
     return {"message": "Driver password reset successfully"}
+
+@router.patch("/drivers/{driver_id}/reset-default-password", tags=["Drivers"])
+async def reset_driver_default_password(driver_id: str):
+    """Reset driver password to default (First 4 of name + @ + Last 4 of phone). No request body needed."""
+    try:
+        # Step 1: Fetch user details
+        query = "SELECT name, phone FROM drivers WHERE driver_id = %s"
+        driver = execute_query(query, (driver_id,), fetch_one=True)
+        if not driver:
+            raise HTTPException(status_code=404, detail="Driver not found")
+        
+        # Step 2 & 3: Generate default password
+        try:
+            default_password = generate_default_password(driver['name'], driver['phone'])
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        
+        # Step 4: Hash the password
+        hashed_password = get_password_hash(default_password)
+        
+        # Step 5: Update database
+        update_query = "UPDATE drivers SET password_hash = %s, updated_at = CURRENT_TIMESTAMP WHERE driver_id = %s"
+        execute_query(update_query, (hashed_password, driver_id))
+        
+        # Step 6: Return success (no password in response)
+        return {"message": "Driver password reset to default successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Reset driver default password error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reset driver password: {str(e)}")
 
 @router.post("/uploads/driver/{driver_id}/photo", tags=["Drivers"])
 async def upload_driver_photo(driver_id: str, file: UploadFile = File(...)):
