@@ -82,6 +82,33 @@ async def get_profile(phone: int):
         logger.error(f"Get profile error: {e}")
         raise HTTPException(status_code=500, detail="Failed to get profile")
 
+@router.get("/auth/admin/profile/{admin_id}", tags=["Authentication"], response_model=AdminResponse)
+async def get_admin_profile(admin_id: str):
+    """Get Admin profile by ID for Auth section"""
+    query = "SELECT admin_id, phone, email, name, status, last_login_at, created_at, updated_at FROM admins WHERE admin_id = %s"
+    admin = execute_query(query, (admin_id,), fetch_one=True)
+    if not admin:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    return admin
+
+@router.get("/auth/parent/profile/{parent_id}", tags=["Authentication"], response_model=ParentResponse)
+async def get_parent_profile(parent_id: str):
+    """Get Parent profile by ID for Auth section"""
+    query = "SELECT parent_id, phone, email, name, parent_role, door_no, street, city, district, pincode, parents_active_status, last_login_at, created_at, updated_at FROM parents WHERE parent_id = %s"
+    parent = execute_query(query, (parent_id,), fetch_one=True)
+    if not parent:
+        raise HTTPException(status_code=404, detail="Parent not found")
+    return parent
+
+@router.get("/auth/driver/profile/{driver_id}", tags=["Authentication"], response_model=DriverResponse)
+async def get_driver_profile(driver_id: str):
+    """Get Driver profile by ID for Auth section"""
+    query = "SELECT driver_id, name, phone, email, licence_number, licence_expiry, status, fcm_token, created_at, updated_at FROM drivers WHERE driver_id = %s"
+    driver = execute_query(query, (driver_id,), fetch_one=True)
+    if not driver:
+        raise HTTPException(status_code=404, detail="Driver not found")
+    return driver
+
 # =====================================================
 # ADMIN ENDPOINTS
 # =====================================================

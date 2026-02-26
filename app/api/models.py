@@ -60,6 +60,7 @@ class StudentStatus(str, Enum):
 class TransportStatus(str, Enum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"
+    SUSPENDED = "SUSPENDED"
     ALL = "ALL"
 
 
@@ -71,6 +72,7 @@ class Gender(str, Enum):
     MALE = "MALE"
     FEMALE = "FEMALE"
     OTHER = "OTHER"
+    ALL = "ALL"
 
 class TripStatus(str, Enum):
     NOT_STARTED = "NOT_STARTED"
@@ -373,31 +375,24 @@ class RouteStopResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 # Student Models
-class StudentBase(BaseModel):
+class StudentCreate(BaseModel):
     parent_id: str
     s_parent_id: Optional[str] = None
     name: str = Field(..., max_length=100)
     gender: Gender
     dob: Optional[date] = None
+    study_year: str = Field(..., max_length=20)
     class_id: Optional[str] = None
     pickup_route_id: str
     drop_route_id: str
     pickup_stop_id: str
     drop_stop_id: str
     emergency_contact: Optional[int] = Field(None, description="Emergency contact number")
-    study_year: str = Field(..., max_length=20)
     student_photo_url: Optional[str] = Field(None, max_length=200)
     is_transport_user: bool = True
     student_status: StudentStatus = StudentStatus.CURRENT
     transport_status: TransportStatus = TransportStatus.ACTIVE
 
-    @field_validator('emergency_contact')
-    @classmethod
-    def validate_emergency_contact(cls, v):
-        return phone_validator(v) if v is not None else v
-
-
-class StudentCreate(StudentBase):
     @field_validator('s_parent_id', mode='before')
     @classmethod
     def validate_s_parent_id(cls, v):
@@ -415,20 +410,18 @@ class StudentCreate(StudentBase):
         return v
 
 class StudentUpdate(BaseModel):
-    parent_id: Optional[str] = None
-    s_parent_id: Optional[str] = None
     name: Optional[str] = Field(None, max_length=100)
     gender: Optional[Gender] = None
     dob: Optional[date] = None
+    study_year: Optional[str] = Field(None, max_length=20)
     class_id: Optional[str] = None
     pickup_route_id: Optional[str] = None
     drop_route_id: Optional[str] = None
     pickup_stop_id: Optional[str] = None
     drop_stop_id: Optional[str] = None
-    emergency_contact: Optional[int] = Field(None, description="Emergency contact number")
-    study_year: Optional[str] = Field(None, max_length=20)
-    student_photo_url: Optional[str] = Field(None, max_length=200)
     is_transport_user: Optional[bool] = None
+    emergency_contact: Optional[int] = None
+    student_photo_url: Optional[str] = None
     student_status: Optional[StudentStatus] = None
     transport_status: Optional[TransportStatus] = None
 
@@ -473,17 +466,17 @@ class StudentResponse(BaseModel):
     student_id: str
     parent_id: str
     s_parent_id: Optional[str] = None
-    name: str = Field(..., max_length=100)
+    name: str
     gender: Gender
     dob: Optional[date] = None
+    study_year: str
     class_id: Optional[str] = None
     pickup_route_id: str
     drop_route_id: str
     pickup_stop_id: str
     drop_stop_id: str
-    emergency_contact: Optional[int] = Field(None, description="Emergency contact number")
-    study_year: str
-    student_photo_url: Optional[str] = Field(None, max_length=200)
+    emergency_contact: Optional[int] = None
+    student_photo_url: Optional[str] = None
     student_status: StudentStatus
     transport_status: TransportStatus
     is_transport_user: bool
