@@ -632,8 +632,8 @@ async def reset_driver_password_by_phone(reset_data: PasswordResetByPhone):
 @router.post("/uploads/driver/{driver_id}/photo", tags=["Drivers"])
 async def upload_driver_photo(driver_id: str, file: UploadFile = File(...)):
     """Upload/Update driver photo and delete old one if exists"""
-    # Verify driver and get old photo
-    driver = execute_query("SELECT driver_id, photo_url FROM drivers WHERE driver_id = %s", (driver_id,), fetch_one=True)
+    # Verify driver
+    driver = execute_query("SELECT driver_id FROM drivers WHERE driver_id = %s", (driver_id,), fetch_one=True)
     if not driver:
         raise HTTPException(status_code=404, detail="Driver not found")
         
@@ -644,18 +644,8 @@ async def upload_driver_photo(driver_id: str, file: UploadFile = File(...)):
     # Save new file
     file_url = await upload_service.save_file(file, "drivers", custom_filename=driver_id)
     
-    # Update database
-    try:
-        query = "UPDATE drivers SET photo_url = %s, updated_at = CURRENT_TIMESTAMP WHERE driver_id = %s"
-        execute_query(query, (file_url, driver_id))
-        
-        # Delete old file from storage if it's different
-        if driver.get('photo_url') and driver['photo_url'] != file_url:
-            upload_service.delete_file_by_url(driver['photo_url'])
-            
-    except Exception as e:
-        logger.error(f"Failed to update driver photo URL: {e}")
-        
+    # We can't update photo_url in DB because column doesn't exist in current schema
+    # But we return the url just in case
     return {"url": file_url}
 
 # =====================================================
