@@ -15,21 +15,40 @@ router = APIRouter()
 async def admin_login(login_data: LoginRequest):
     """Login for Admin users"""
     try:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Admin login attempt for phone: {login_data.phone}")
+        
         query = "SELECT admin_id, phone, password_hash, name FROM admins WHERE phone = %s AND status = 'ACTIVE'"
         admin = execute_query(query, (login_data.phone,), fetch_one=True)
         
-        if admin and verify_password(login_data.password, admin['password_hash']):
-            # Update last login
-            execute_query("UPDATE admins SET last_login_at = %s WHERE admin_id = %s", 
-                         (datetime.now(), admin['admin_id']))
-            
-            access_token = create_access_token(
-                data={"sub": admin['admin_id'], "user_type": "admin", "phone": admin['phone']}
-            )
-            return {"access_token": access_token, "token_type": "bearer"}
+        if admin:
+            logger.info(f"Admin found: {admin['name']}")
+            if verify_password(login_data.password, admin['password_hash']):
+                logger.info(f"Password verified for admin: {admin['name']}")
+                # Update last login
+                try:
+                    execute_query("UPDATE admins SET last_login_at = %s WHERE admin_id = %s", 
+                                 (datetime.now(), admin['admin_id']))
+                except Exception as update_err:
+                    logger.warning(f"Failed to update last_login_at: {update_err}")
+                
+                access_token = create_access_token(
+                    data={"sub": admin['admin_id'], "user_type": "admin", "phone": admin['phone']}
+                )
+                return {"access_token": access_token, "token_type": "bearer"}
+            else:
+                logger.warning(f"Invalid password for admin: {admin['name']}")
+        else:
+            logger.warning(f"Admin not found for phone: {login_data.phone}")
         
         raise HTTPException(status_code=401, detail="Invalid admin credentials or account inactive")
+    except HTTPException:
+        raise
     except Exception as e:
+        import traceback
+        logger.error(f"System error in admin_login: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Admin login failed: {str(e)}")
 
 @router.post("/auth/parent/login", response_model=Token, tags=["Authentication"])
