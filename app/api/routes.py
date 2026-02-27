@@ -2148,7 +2148,7 @@ async def get_trip(trip_id: str):
     return trip
 
 @router.get("/trips/ongoing/all", response_model=List[TripResponse], tags=["Trips"])
-async def get_active_trips():
+async def get_ongoing_trips():
     """Get all ongoing trips"""
     query = "SELECT * FROM trips WHERE status = 'ONGOING' ORDER BY started_at DESC"
     trips = execute_query(query, fetch_all=True)
@@ -2161,6 +2161,9 @@ async def update_trip(trip_id: str, trip_update: TripUpdate):
     values = []
     
     for field, value in trip_update.dict(exclude_unset=True).items():
+        # Convert enum values to their string representation for SQL
+        if hasattr(value, 'value'):
+            value = value.value
         update_fields.append(f"{field} = %s")
         values.append(value)
     
@@ -2654,9 +2657,9 @@ async def delete_fcm_token(fcm_id: str):
 # BUS TRACKING ENDPOINTS
 # =====================================================
 
-@router.post("/bus-tracking/location", tags=["Bus Tracking"])
-async def update_bus_location(location_data: BusLocationUpdate):
-    """Automatic bus tracking - handles stop progression and trip completion"""
+@router.post("/bus-tracking/stop-progression", tags=["Bus Tracking"])
+async def update_bus_stop_progression(location_data: BusLocationUpdate):
+    """Bus stop progression tracking - handles stop updates and trip completion based on GPS proximity"""
     try:
         result = await bus_tracking_service.update_bus_location(
             trip_id=location_data.trip_id,
@@ -2669,6 +2672,8 @@ async def update_bus_location(location_data: BusLocationUpdate):
         else:
             raise HTTPException(status_code=400, detail=result.get("message", "Failed to process location"))
             
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Bus location processing error: {e}")
         raise HTTPException(status_code=500, detail="Failed to process bus location")
@@ -2758,8 +2763,8 @@ async def get_fcm_cache(route_id: str):
     }
 
 @router.get("/trips/active", response_model=List[TripResponse], tags=["Trips"])
-async def get_active_trips():
-    """Get all active/ongoing trips"""
+async def get_active_and_pending_trips():
+    """Get all active/ongoing trips (includes NOT_STARTED and ONGOING)"""
     query = "SELECT * FROM trips WHERE status IN ('ONGOING', 'NOT_STARTED') ORDER BY trip_date DESC"
     trips = execute_query(query, fetch_all=True)
     return trips or []
@@ -2808,6 +2813,8 @@ async def start_trip(trip_id: str):
 
 
         return trip_data
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Start trip error: {e}")
         raise HTTPException(status_code=500, detail="Failed to start trip")

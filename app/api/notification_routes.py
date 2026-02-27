@@ -367,20 +367,39 @@ async def send_class_notification(
     return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens)}
 
 from app.services.proximity_service import proximity_service
+from app.services.bus_tracking import bus_tracking_service
+import logging
+
+logger = logging.getLogger(__name__)
 
 @router.post("/bus-tracking/location", tags=["Proximity Alerts"])
-async def update_bus_location_proximity(location_data: BusLocationUpdate):
-    """Automatic bus tracking with proximity/geofence notifications (Ported from notification_app)"""
+async def update_bus_location_combined(location_data: BusLocationUpdate):
+    """Combined bus tracking: handles stop progression, trip completion, AND proximity/geofence notifications"""
     try:
-        result = await proximity_service.process_location_update(
+        # 1. Run stop progression (updates current_stop_order, auto-completes trip, sends stop arrival notifications)
+        stop_result = await bus_tracking_service.update_bus_location(
+            trip_id=location_data.trip_id,
+            latitude=location_data.latitude,
+            longitude=location_data.longitude
+        )
+        
+        # 2. Run proximity alerts (approaching/arrived geofence notifications)
+        proximity_result = await proximity_service.process_location_update(
             trip_id=location_data.trip_id,
             lat=location_data.latitude,
             lng=location_data.longitude
         )
-        return result
+        
+        # Combine results
+        return {
+            "success": stop_result.get("success", False) or proximity_result.get("success", False),
+            "trip_id": location_data.trip_id,
+            "stop_progression": stop_result,
+            "proximity_alerts": proximity_result
+        }
     except Exception as e:
         import traceback
-        logger.error(f"Proximity update error: {e}")
+        logger.error(f"Combined bus tracking error: {e}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
