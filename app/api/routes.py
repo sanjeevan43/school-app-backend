@@ -1024,23 +1024,27 @@ async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
         if not old_stop:
             raise HTTPException(status_code=404, detail="Route stop not found")
         
-        # If order is being updated, validate it
+        # Validation for Pickup Order
         if stop_update.pickup_stop_order is not None and stop_update.pickup_stop_order != old_stop['pickup_stop_order']:
-            new_order = stop_update.pickup_stop_order
-            
-            # Validation: new_order must be within [1, max_order]
-            max_order_data = execute_query(
-                "SELECT MAX(pickup_stop_order) as max_order FROM route_stops WHERE route_id = %s",
-                (old_stop['route_id'],),
-                fetch_one=True
+            new_p = stop_update.pickup_stop_order
+            max_p_data = execute_query(
+                "SELECT MAX(pickup_stop_order) as max_p FROM route_stops WHERE route_id = %s",
+                (old_stop['route_id'],), fetch_one=True
             )
-            max_order = max_order_data['max_order'] if max_order_data and max_order_data['max_order'] else 1
-            
-            if new_order < 1 or new_order > max_order:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Invalid order. Order must be between 1 and {max_order}."
-                )
+            max_p = max_p_data['max_p'] if max_p_data and max_p_data['max_p'] else 1
+            if new_p < 1 or new_p > max_p:
+                raise HTTPException(status_code=400, detail=f"Invalid pickup order. Must be between 1 and {max_p}.")
+
+        # Validation for Drop Order
+        if stop_update.drop_stop_order is not None and stop_update.drop_stop_order != old_stop['drop_stop_order']:
+            new_d = stop_update.drop_stop_order
+            max_d_data = execute_query(
+                "SELECT MAX(drop_stop_order) as max_d FROM route_stops WHERE route_id = %s",
+                (old_stop['route_id'],), fetch_one=True
+            )
+            max_d = max_d_data['max_d'] if max_d_data and max_d_data['max_d'] else 1
+            if new_d < 1 or new_d > max_d:
+                raise HTTPException(status_code=400, detail=f"Invalid drop order. Must be between 1 and {max_d}.")
 
         update_fields = []
         values = []
