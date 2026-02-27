@@ -894,62 +894,71 @@ async def delete_route(route_id: str):
 
 @router.post("/route-stops", response_model=List[RouteStopResponse], tags=["Route Stops"])
 async def create_route_stop(route_stop: RouteStopCreate):
-    """Create a new route stop with order validation and transactional shifting"""
+    """Create a new route stop with independent order validation and transactional shifting for pickup and drop sequences"""
     route_id = route_stop.route_id
-    new_order = route_stop.pickup_stop_order
+    new_pickup = route_stop.pickup_stop_order
+    new_drop = route_stop.drop_stop_order
 
     # 1. Validate route exists
     route = execute_query("SELECT route_id FROM routes WHERE route_id = %s", (route_id,), fetch_one=True)
     if not route:
         raise HTTPException(status_code=404, detail=f"Route {route_id} not found")
 
-    # 2. Validate pickup_stop_order is >= 1
-    if new_order < 1:
-        raise HTTPException(status_code=400, detail="pickup_stop_order must be greater than or equal to 1")
+    # 2. Validate orders are >= 1
+    if new_pickup < 1 or new_drop < 1:
+        raise HTTPException(status_code=400, detail="pickup_stop_order and drop_stop_order must be >= 1")
 
-    # 3. Get current maximum pickup_stop_order for that route
-    max_order_data = execute_query(
-        "SELECT MAX(pickup_stop_order) as max_order FROM route_stops WHERE route_id = %s",
+    # 3. Get current maximums
+    max_orders = execute_query(
+        "SELECT MAX(pickup_stop_order) as max_pickup, MAX(drop_stop_order) as max_drop FROM route_stops WHERE route_id = %s",
         (route_id,),
         fetch_one=True
     )
-    max_order = max_order_data['max_order'] if max_order_data and max_order_data['max_order'] is not None else 0
+    max_p = max_orders['max_pickup'] if max_orders and max_orders['max_pickup'] is not None else 0
+    max_d = max_orders['max_drop'] if max_orders and max_orders['max_drop'] is not None else 0
 
-    # 4. If new_order > max_order + 1 → return validation error
-    if new_order > max_order + 1:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid order. Next available order is {max_order + 1}, but {new_order} was provided."
-        )
+    # 4. Validation: New order must be <= max + 1
+    if new_pickup > max_p + 1:
+        raise HTTPException(status_code=400, detail=f"Invalid pickup order. Next available is {max_p + 1}")
+    if new_drop > max_d + 1:
+        raise HTTPException(status_code=400, detail=f"Invalid drop order. Next available is {max_d + 1}")
 
     try:
         # 5. Start database transaction
         with get_db() as conn:
             with conn.cursor() as cursor:
-                # 6. Shift existing stops
-                shift_query = """
+                # 6a. Shift Pickup sequence (independent)
+                # Note: We must ORDER BY to avoid unique constraint collisions
+                shift_pickup_query = """
                 UPDATE route_stops
-                SET pickup_stop_order = pickup_stop_order + 1,
-                    drop_stop_order = drop_stop_order + 1
-                WHERE route_id = %s
-                AND pickup_stop_order >= %s
+                SET pickup_stop_order = pickup_stop_order + 1
+                WHERE route_id = %s AND pickup_stop_order >= %s
                 ORDER BY pickup_stop_order DESC
                 """
-                cursor.execute(shift_query, (route_id, new_order))
+                cursor.execute(shift_pickup_query, (route_id, new_pickup))
 
-                # 7. Insert new stop with given order
+                # 6b. Shift Drop sequence (independent)
+                shift_drop_query = """
+                UPDATE route_stops
+                SET drop_stop_order = drop_stop_order + 1
+                WHERE route_id = %s AND drop_stop_order >= %s
+                ORDER BY drop_stop_order DESC
+                """
+                cursor.execute(shift_drop_query, (route_id, new_drop))
+
+                # 7. Insert new stop with provided orders
                 stop_id = str(uuid.uuid4())
                 insert_query = """
                 INSERT INTO route_stops (stop_id, route_id, stop_name, latitude, longitude, 
                                        pickup_stop_order, drop_stop_order)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """
-                # For now, we keep drop_stop_order same as pickup_stop_order as per existing patterns
                 cursor.execute(insert_query, (
                     stop_id, route_id, route_stop.stop_name, 
                     route_stop.latitude, route_stop.longitude, 
-                    new_order, new_order
+                    new_pickup, new_drop
                 ))
+                # Transaction commits automatically via get_db()
                 # 8. Commit transaction (handled by context manager)
 
         # 9. Rebuild route_stop_fcm_cache for that route
@@ -1047,64 +1056,73 @@ async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
         # Start database transaction for reordering
         with get_db() as conn:
             with conn.cursor() as cursor:
-                # 1. If order is being changed, handle shifting with a temporary position
-                if stop_update.pickup_stop_order is not None and stop_update.pickup_stop_order != old_stop['pickup_stop_order']:
-                    new_order = stop_update.pickup_stop_order
-                    old_order = old_stop['pickup_stop_order']
+                # 1. Logic for pickup_stop_order change
+                pickup_changed = stop_update.pickup_stop_order is not None and stop_update.pickup_stop_order != old_stop['pickup_stop_order']
+                drop_changed = stop_update.drop_stop_order is not None and stop_update.drop_stop_order != old_stop['drop_stop_order']
+
+                if pickup_changed or drop_changed:
                     route_id = old_stop['route_id']
 
-                    # A. Move target stop to a temporary negative position to vacate its current spot
+                    # A. Move target stop to a temporary negative position to vacate spot
                     cursor.execute(
                         "UPDATE route_stops SET pickup_stop_order = -1, drop_stop_order = -1 WHERE stop_id = %s",
                         (stop_id,)
                     )
 
-                    # B. Shift intermediate stops
-                    if new_order < old_order:
-                        # Moving up: Shift stops in between DOWN (orders go UP)
-                        shift_query = """
-                        UPDATE route_stops 
-                        SET pickup_stop_order = pickup_stop_order + 1, 
-                            drop_stop_order = drop_stop_order + 1 
-                        WHERE route_id = %s AND pickup_stop_order >= %s 
-                        AND pickup_stop_order < %s AND stop_id != %s
-                        ORDER BY pickup_stop_order DESC
-                        """
-                        cursor.execute(shift_query, (route_id, new_order, old_order, stop_id))
-                    else:
-                        # Moving down: Shift stops in between UP (orders go DOWN)
-                        shift_query = """
-                        UPDATE route_stops 
-                        SET pickup_stop_order = pickup_stop_order - 1, 
-                            drop_stop_order = drop_stop_order - 1 
-                        WHERE route_id = %s AND pickup_stop_order > %s 
-                        AND pickup_stop_order <= %s AND stop_id != %s
-                        ORDER BY pickup_stop_order ASC
-                        """
-                        cursor.execute(shift_query, (route_id, old_order, new_order, stop_id))
+                    # B. Handle Pickup Sequence Reordering
+                    if pickup_changed:
+                        new_p = stop_update.pickup_stop_order
+                        old_p = old_stop['pickup_stop_order']
+                        if new_p < old_p:
+                            # Shift stops in between DOWN (inc order)
+                            cursor.execute("""
+                                UPDATE route_stops SET pickup_stop_order = pickup_stop_order + 1
+                                WHERE route_id = %s AND pickup_stop_order >= %s AND pickup_stop_order < %s AND stop_id != %s
+                                ORDER BY pickup_stop_order DESC
+                            """, (route_id, new_p, old_p, stop_id))
+                        else:
+                            # Shift stops in between UP (dec order)
+                            cursor.execute("""
+                                UPDATE route_stops SET pickup_stop_order = pickup_stop_order - 1
+                                WHERE route_id = %s AND pickup_stop_order > %s AND pickup_stop_order <= %s AND stop_id != %s
+                                ORDER BY pickup_stop_order ASC
+                            """, (route_id, old_p, new_p, stop_id))
 
-                    # C. Finally, update the stop itself to its NEW final data
+                    # C. Handle Drop Sequence Reordering
+                    if drop_changed:
+                        new_d = stop_update.drop_stop_order
+                        old_d = old_stop['drop_stop_order']
+                        if new_d < old_d:
+                            cursor.execute("""
+                                UPDATE route_stops SET drop_stop_order = drop_stop_order + 1
+                                WHERE route_id = %s AND drop_stop_order >= %s AND drop_stop_order < %s AND stop_id != %s
+                                ORDER BY drop_stop_order DESC
+                            """, (route_id, new_d, old_d, stop_id))
+                        else:
+                            cursor.execute("""
+                                UPDATE route_stops SET drop_stop_order = drop_stop_order - 1
+                                WHERE route_id = %s AND drop_stop_order > %s AND drop_stop_order <= %s AND stop_id != %s
+                                ORDER BY drop_stop_order ASC
+                            """, (route_id, old_d, new_d, stop_id))
+
+                    # D. Finally, update the stop itself with all new fields
                     update_fields = []
                     values = []
                     for field, value in stop_update.dict(exclude_unset=True).items():
                         update_fields.append(f"{field} = %s")
                         values.append(value)
-                    
-                    update_query = f"UPDATE route_stops SET {', '.join(update_fields)} WHERE stop_id = %s"
-                    cursor.execute(update_query, tuple(values + [stop_id]))
+                    cursor.execute(f"UPDATE route_stops SET {', '.join(update_fields)} WHERE stop_id = %s", tuple(values + [stop_id]))
 
                 else:
-                    # 2. No order change, simple update
+                    # 2. Simple update without order change
                     update_fields = []
                     values = []
                     for field, value in stop_update.dict(exclude_unset=True).items():
                         if value is not None:
                             update_fields.append(f"{field} = %s")
                             values.append(value)
-                    
                     if update_fields:
-                        update_query = f"UPDATE route_stops SET {', '.join(update_fields)} WHERE stop_id = %s"
-                        cursor.execute(update_query, tuple(values + [stop_id]))
+                        cursor.execute(f"UPDATE route_stops SET {', '.join(update_fields)} WHERE stop_id = %s", tuple(values + [stop_id]))
         
         # 3. Trigger cascade updates
         new_data = stop_update.dict(exclude_unset=True)
@@ -1138,16 +1156,21 @@ async def delete_route_stop(stop_id: str):
                 # 1. Delete route stop
                 cursor.execute("DELETE FROM route_stops WHERE stop_id = %s", (stop_id,))
                 
-                # 2. Shift remaining stops down (pickup_stop_order - 1)
-                shift_query = """
-                UPDATE route_stops
-                SET pickup_stop_order = pickup_stop_order - 1,
-                    drop_stop_order = drop_stop_order - 1
-                WHERE route_id = %s
-                AND pickup_stop_order > %s
-                ORDER BY pickup_stop_order ASC
-                """
-                cursor.execute(shift_query, (route_id, deleted_order))
+                # 2. Shift Pickup sequence down
+                deleted_p = stop_data['pickup_stop_order']
+                cursor.execute("""
+                    UPDATE route_stops SET pickup_stop_order = pickup_stop_order - 1
+                    WHERE route_id = %s AND pickup_stop_order > %s
+                    ORDER BY pickup_stop_order ASC
+                """, (route_id, deleted_p))
+
+                # 3. Shift Drop sequence down
+                deleted_d = stop_data['drop_stop_order']
+                cursor.execute("""
+                    UPDATE route_stops SET drop_stop_order = drop_stop_order - 1
+                    WHERE route_id = %s AND drop_stop_order > %s
+                    ORDER BY drop_stop_order ASC
+                """, (route_id, deleted_d))
                 
                 # Transaction commits automatically via get_db() context manager
         
