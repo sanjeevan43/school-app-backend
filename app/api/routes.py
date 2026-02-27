@@ -1035,20 +1035,24 @@ async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
         if not update_fields:
             raise HTTPException(status_code=400, detail="No fields to update")
         
-        # Start database transaction for reordering if needed
+        # Start database transaction for reordering
         with get_db() as conn:
             with conn.cursor() as cursor:
-                # 1. Update the stop itself
-                update_query = f"UPDATE route_stops SET {', '.join(update_fields)} WHERE stop_id = %s"
-                cursor.execute(update_query, tuple(values + [stop_id]))
-                
-                # 2. If order was updated, handle the shifting of other stops
+                # 1. If order is being changed, handle shifting with a temporary position
                 if stop_update.pickup_stop_order is not None and stop_update.pickup_stop_order != old_stop['pickup_stop_order']:
                     new_order = stop_update.pickup_stop_order
                     old_order = old_stop['pickup_stop_order']
-                    
+                    route_id = old_stop['route_id']
+
+                    # A. Move target stop to a temporary negative position to vacate its current spot
+                    cursor.execute(
+                        "UPDATE route_stops SET pickup_stop_order = -1, drop_stop_order = -1 WHERE stop_id = %s",
+                        (stop_id,)
+                    )
+
+                    # B. Shift intermediate stops
                     if new_order < old_order:
-                        # Moving up: Shift stops in between DOWN
+                        # Moving up: Shift stops in between DOWN (orders go UP)
                         shift_query = """
                         UPDATE route_stops 
                         SET pickup_stop_order = pickup_stop_order + 1, 
@@ -1057,9 +1061,9 @@ async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
                         AND pickup_stop_order < %s AND stop_id != %s
                         ORDER BY pickup_stop_order DESC
                         """
-                        cursor.execute(shift_query, (old_stop['route_id'], new_order, old_order, stop_id))
+                        cursor.execute(shift_query, (route_id, new_order, old_order, stop_id))
                     else:
-                        # Moving down: Shift stops in between UP
+                        # Moving down: Shift stops in between UP (orders go DOWN)
                         shift_query = """
                         UPDATE route_stops 
                         SET pickup_stop_order = pickup_stop_order - 1, 
@@ -1068,7 +1072,30 @@ async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
                         AND pickup_stop_order <= %s AND stop_id != %s
                         ORDER BY pickup_stop_order ASC
                         """
-                        cursor.execute(shift_query, (old_stop['route_id'], old_order, new_order, stop_id))
+                        cursor.execute(shift_query, (route_id, old_order, new_order, stop_id))
+
+                    # C. Finally, update the stop itself to its NEW final data
+                    update_fields = []
+                    values = []
+                    for field, value in stop_update.dict(exclude_unset=True).items():
+                        update_fields.append(f"{field} = %s")
+                        values.append(value)
+                    
+                    update_query = f"UPDATE route_stops SET {', '.join(update_fields)} WHERE stop_id = %s"
+                    cursor.execute(update_query, tuple(values + [stop_id]))
+
+                else:
+                    # 2. No order change, simple update
+                    update_fields = []
+                    values = []
+                    for field, value in stop_update.dict(exclude_unset=True).items():
+                        if value is not None:
+                            update_fields.append(f"{field} = %s")
+                            values.append(value)
+                    
+                    if update_fields:
+                        update_query = f"UPDATE route_stops SET {', '.join(update_fields)} WHERE stop_id = %s"
+                        cursor.execute(update_query, tuple(values + [stop_id]))
         
         # 3. Trigger cascade updates
         new_data = stop_update.dict(exclude_unset=True)
