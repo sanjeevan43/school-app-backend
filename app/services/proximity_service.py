@@ -10,8 +10,8 @@ from app.core.database import execute_query
 logger = logging.getLogger(__name__)
 
 # Constants
-APPROACHING_RADIUS = int(os.getenv("GEOFENCE_RADIUS", 500))  # meters
-ARRIVED_RADIUS = 20       # meters
+APPROACHING_RADIUS = 1000  # 1km - notification to be ready
+ARRIVED_RADIUS = 300       # 300m - actual arrival/location notification
 
 class ProximityTrackingService:
     def __init__(self):
@@ -28,10 +28,13 @@ class ProximityTrackingService:
             FROM fcm_tokens ft
             JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
             WHERE (s.pickup_route_id = %s OR s.drop_route_id = %s)
+            AND s.transport_status = 'ACTIVE'
+            AND s.student_status = 'CURRENT'
+            AND s.is_transport_user = 1
             AND ft.fcm_token IS NOT NULL
             """
-            results = execute_query(query, (route_id, route_id), fetch_all=True)
-            return [r['fcm_token'] for r in results if r['fcm_token']]
+            rows = execute_query(query, (route_id, route_id), fetch_all=True)
+            return [r['fcm_token'] for r in rows if r['fcm_token']]
         except Exception as e:
             logger.error(f"Error fetching route tokens: {e}")
             return []
@@ -144,7 +147,7 @@ class ProximityTrackingService:
         }
 
     async def get_stop_tokens(self, route_id: str, stop_id: str) -> List[str]:
-        """Fetch tokens for students at a specific stop"""
+        """Fetch tokens for students at a specific stop specifically"""
         try:
             query = """
             SELECT DISTINCT ft.fcm_token
@@ -152,17 +155,29 @@ class ProximityTrackingService:
             JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
             WHERE (s.pickup_stop_id = %s OR s.drop_stop_id = %s)
             AND (s.pickup_route_id = %s OR s.drop_route_id = %s)
-            AND ft.fcm_token IS NOT NULL
             AND s.transport_status = 'ACTIVE'
+            AND s.student_status = 'CURRENT'
+            AND s.is_transport_user = 1
+            AND ft.fcm_token IS NOT NULL
             """
-            results = execute_query(query, (stop_id, stop_id, route_id, route_id), fetch_all=True)
-            return [r['fcm_token'] for r in results]
+            rows = execute_query(query, (stop_id, stop_id, route_id, route_id), fetch_all=True)
+            return [r['fcm_token'] for r in rows if r['fcm_token']]
         except Exception as e:
             logger.error(f"Error fetching stop tokens: {e}")
             return []
 
     async def start_trip(self, trip_id: str, route_id: str):
-        """Manual Start Trip Logic"""
+        """Manual Start Trip Logic - updates DB status to ONGOING"""
+        try:
+            # Update trip status in DB
+            execute_query(
+                "UPDATE trips SET status = 'ONGOING', started_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s",
+                (trip_id,)
+            )
+            logger.info(f"✅ Trip {trip_id} marked as ONGOING in DB")
+        except Exception as e:
+            logger.error(f"Failed to update trip status to ONGOING: {e}")
+
         tokens = await self.fetch_tokens_by_route(route_id)
         if tokens:
             await notification_service.broadcast_to_tokens(
@@ -172,7 +187,17 @@ class ProximityTrackingService:
         return {"success": True, "recipients": len(tokens)}
 
     async def complete_trip(self, trip_id: str, route_id: str):
-        """Manual Complete Trip Logic"""
+        """Manual Complete Trip Logic - updates DB status to COMPLETED"""
+        try:
+            # Update trip status in DB
+            execute_query(
+                "UPDATE trips SET status = 'COMPLETED', ended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s",
+                (trip_id,)
+            )
+            logger.info(f"✅ Trip {trip_id} marked as COMPLETED in DB")
+        except Exception as e:
+            logger.error(f"Failed to update trip status to COMPLETED: {e}")
+
         tokens = await self.fetch_tokens_by_route(route_id)
         if tokens:
             await notification_service.broadcast_to_tokens(
@@ -180,7 +205,7 @@ class ProximityTrackingService:
                 {"trip_id": trip_id, "route_id": route_id, "status": "COMPLETED"}
             )
         
-        # Cleanup state
+        # Cleanup in-memory state
         if trip_id in self.active_trips:
             del self.active_trips[trip_id]
         if trip_id in self.notified_stops:

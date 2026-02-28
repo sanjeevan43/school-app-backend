@@ -2248,9 +2248,15 @@ async def update_trip(trip_id: str, trip_update: TripUpdate):
 
 @router.put("/trips/{trip_id}/status", response_model=TripResponse, tags=["Trips"])
 async def update_trip_status(trip_id: str, status_update: TripStatusUpdate):
-    """Update trip status only"""
-    query = "UPDATE trips SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s"
-    result = execute_query(query, (status_update.status.value, trip_id))
+    """Update trip status only. Auto-sets started_at when ONGOING and ended_at when COMPLETED/CANCELED."""
+    new_status = status_update.status.value
+    if new_status == "ONGOING":
+        query = "UPDATE trips SET status = %s, started_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s"
+    elif new_status in ("COMPLETED", "CANCELED"):
+        query = "UPDATE trips SET status = %s, ended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s"
+    else:
+        query = "UPDATE trips SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s"
+    result = execute_query(query, (new_status, trip_id))
     if result == 0:
         raise HTTPException(status_code=404, detail="Trip not found")
     return await get_trip(trip_id)
@@ -2854,7 +2860,7 @@ async def start_trip(trip_id: str):
         if result == 0:
             raise HTTPException(status_code=404, detail="Trip not found or already started")
         
-        # Notify all parents on this route that the trip has started
+        # Notify all parents on this route concurrently
         trip_data = await get_trip(trip_id)
         students_query = """
         SELECT s.student_id FROM students s
@@ -2868,16 +2874,23 @@ async def start_trip(trip_id: str):
             student_ids = [s['student_id'] for s in students]
             parent_tokens = bus_tracking_service.get_parent_tokens_for_students(student_ids)
             if parent_tokens:
-                for token in set(parent_tokens):
-                    await notification_service.send_to_device(
+                # Send notifications concurrently
+                tasks = [
+                    notification_service.send_to_device(
                         title="Bus Trip Started",
-                        body=f"The bus trip for route '{trip_data['route_id']}' has started.",
+                        body=f"The bus trip for route '{trip_data['route_name']}' has started.",
                         token=token,
                         recipient_type="parent",
                         message_type="trip_started"
                     )
+                    for token in set(parent_tokens)
+                ]
+                await asyncio.gather(*tasks)
 
-
+        # Also initialize Proximity Service state
+        from app.services.proximity_service import proximity_service
+        # Note: proximity_service.start_trip will also update trip status, but that's fine (idempotent)
+        await proximity_service.start_trip(trip_id, trip_data['route_id'])
 
         return trip_data
     except HTTPException:

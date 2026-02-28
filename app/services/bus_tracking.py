@@ -117,7 +117,7 @@ class BusTrackingService:
                     # Auto-update current stop if very close (within 0.3km)
                     if distance <= 0.3:
                         execute_query(
-                            "UPDATE trips SET current_stop_order = %s WHERE trip_id = %s",
+                            "UPDATE trips SET current_stop_order = %s, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s",
                             (stop['stop_order'], trip_id)
                         )
                         current_stop_order = stop['stop_order']
@@ -127,53 +127,17 @@ class BusTrackingService:
                             "stop_order": stop['stop_order']
                         }
                         
-                        # Send notifications to parents of students at this stop
-                        students_at_stop = self.get_students_for_route_stop(
-                            trip['route_id'], stop['stop_order'], trip['trip_type']
-                        )
-                        student_ids = [s['student_id'] for s in students_at_stop]
-                        parent_tokens = self.get_parent_tokens_for_students(student_ids)
-                        
-                        if parent_tokens:
-                            title = "Bus Arrival Update"
-                            body = f"The bus with registration {trip['registration_number']} has reached {stop['stop_name']}."
-                            
-                            # Send concurrently to all unique tokens
-                            unique_tokens = set(parent_tokens)
-                            tasks = [
-                                notification_service.send_to_device(
-                                    title, body, token, 
-                                    recipient_type="parent",
-                                    message_type="arrival_update"
-                                )
-                                for token in unique_tokens
-                            ]
-                            await asyncio.gather(*tasks)
-
-                            logger.info(f"Sent notifications to {len(unique_tokens)} unique parent tokens for stop {stop['stop_name']}")
+                        # NOTE: Stop arrival notifications are handled by ProximityService
+                        # to avoid duplicate messages. BusTrackingService only updates DB state.
+                        logger.info(f"Stop progression: reached {stop['stop_name']} (order {stop['stop_order']})")
 
                         # Check if this is the last stop - auto complete trip
                         if stop['stop_order'] == max(s['stop_order'] for s in stops):
                             execute_query(
-                                "UPDATE trips SET status = 'COMPLETED', ended_at = CURRENT_TIMESTAMP WHERE trip_id = %s",
+                                "UPDATE trips SET status = 'COMPLETED', ended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s",
                                 (trip_id,)
                             )
-                            # Notify start of trip completion
-                            if parent_tokens:
-                                unique_tokens = set(parent_tokens)
-                                tasks = [
-                                    notification_service.send_to_device(
-                                        "Trip Completed",
-                                        f"The bus has reached the final stop: {stop['stop_name']}.",
-                                        token,
-                                        recipient_type="parent",
-                                        message_type="trip_completed"
-                                    )
-                                    for token in unique_tokens
-                                ]
-                                await asyncio.gather(*tasks)
-
-                            
+                            logger.info(f"Trip {trip_id} auto-completed at final stop {stop['stop_name']}")
                             trip_completed = True
                             break
             

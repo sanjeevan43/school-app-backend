@@ -404,18 +404,26 @@ async def update_bus_location_combined(location_data: BusLocationUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/trip/start", tags=["Proximity Alerts"])
-async def start_trip_v2(trip_id: str, route_id: str, x_admin_key: str = Header(..., alias="x-admin-key")):
-    """Start trip and notify parents (Ported from notification_app)"""
+async def start_trip_v2(trip_id: str, x_admin_key: str = Header(..., alias="x-admin-key")):
+    """Start trip: marks trip as ONGOING in DB and notifies all parents on the route. Only needs trip_id."""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    return await proximity_service.start_trip(trip_id, route_id)
+    # Fetch the route_id from DB
+    trip = execute_query("SELECT route_id FROM trips WHERE trip_id = %s", (trip_id,), fetch_one=True)
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    return await proximity_service.start_trip(trip_id, trip["route_id"])
 
 @router.post("/trip/complete", tags=["Proximity Alerts"])
-async def complete_trip_v2(trip_id: str, route_id: str, x_admin_key: str = Header(..., alias="x-admin-key")):
-    """Complete trip and notify parents (Ported from notification_app)"""
+async def complete_trip_v2(trip_id: str, x_admin_key: str = Header(..., alias="x-admin-key")):
+    """Complete trip: marks trip as COMPLETED in DB and notifies all parents on the route. Only needs trip_id."""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    return await proximity_service.complete_trip(trip_id, route_id)
+    # Fetch the route_id from DB
+    trip = execute_query("SELECT route_id FROM trips WHERE trip_id = %s", (trip_id,), fetch_one=True)
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    return await proximity_service.complete_trip(trip_id, trip["route_id"])
 
 @router.post("/notifications/manual-send", tags=["Proximity Alerts"])
 async def manual_send(
