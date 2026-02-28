@@ -106,40 +106,38 @@ class BusTrackingService:
             stops_passed = 0
             current_stop_info = None
             
-            # Check all upcoming stops for progression
+            # Find the NEXT stop in the sequence
+            next_stop = None
             for stop in stops:
-                if stop['stop_order'] > current_stop_order:
-                    distance = self.calculate_distance(
-                        latitude, longitude, 
-                        float(stop['latitude']), float(stop['longitude'])
+                if stop['stop_order'] == current_stop_order + 1:
+                    next_stop = stop
+                    break
+            
+            if next_stop:
+                distance = self.calculate_distance(
+                    latitude, longitude, 
+                    float(next_stop['latitude']), float(next_stop['longitude'])
+                )
+                
+                # Update current stop if reached (within 0.3km)
+                if distance <= 0.3:
+                    execute_query(
+                        "UPDATE trips SET current_stop_order = %s, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s",
+                        (next_stop['stop_order'], trip_id)
                     )
+                    current_stop_order = next_stop['stop_order']
+                    stops_passed = 1
+                    current_stop_info = {
+                        "stop_name": next_stop['stop_name'],
+                        "stop_order": next_stop['stop_order']
+                    }
                     
-                    # Auto-update current stop if very close (within 0.3km)
-                    if distance <= 0.3:
-                        execute_query(
-                            "UPDATE trips SET current_stop_order = %s, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s",
-                            (stop['stop_order'], trip_id)
-                        )
-                        current_stop_order = stop['stop_order']
-                        stops_passed += 1
-                        current_stop_info = {
-                            "stop_name": stop['stop_name'],
-                            "stop_order": stop['stop_order']
-                        }
-                        
-                        # NOTE: Stop arrival notifications are handled by ProximityService
-                        # to avoid duplicate messages. BusTrackingService only updates DB state.
-                        logger.info(f"Stop progression: reached {stop['stop_name']} (order {stop['stop_order']})")
-
-                        # Check if this is the last stop - auto complete trip
-                        if stop['stop_order'] == max(s['stop_order'] for s in stops):
-                            execute_query(
-                                "UPDATE trips SET status = 'COMPLETED', ended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s",
-                                (trip_id,)
-                            )
-                            logger.info(f"Trip {trip_id} auto-completed at final stop {stop['stop_name']}")
-                            trip_completed = True
-                            break
+                    # NOTE: Stop arrival notifications are handled by ProximityService
+                    # to avoid duplicate messages. BusTrackingService only updates DB state.
+                    logger.info(f"Stop progression: reached {next_stop['stop_name']} (order {next_stop['stop_order']})")
+                    
+                    # Manual completion only; auto-completion removed per user request.
+                    trip_completed = False 
             
             return {
                 "success": True,

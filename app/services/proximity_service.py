@@ -59,92 +59,98 @@ class ProximityTrackingService:
         """Core proximity logic moved from notification_app"""
         logger.info(f"📍 Proximity Check: {trip_id} -> {lat}, {lng}")
         
-        # Initialize trip state if missing
-        if trip_id not in self.active_trips:
-            try:
-                # Get trip details from DB
-                trip_query = "SELECT route_id, trip_type FROM trips WHERE trip_id = %s"
-                trip = execute_query(trip_query, (trip_id,), fetch_one=True)
-                if not trip:
-                    return {"success": False, "message": "Trip not found"}
-                
-                route_id = trip['route_id']
-                trip_type = trip['trip_type']
-                stops = await self.fetch_route_stops(route_id, trip_type)
-
-                
+        # Get trip details from DB to find the CURRENT stop order
+        try:
+            trip_info = execute_query("SELECT current_stop_order, route_id, trip_type FROM trips WHERE trip_id = %s", (trip_id,), fetch_one=True)
+            if not trip_info:
+                return {"success": False, "message": "Trip not found"}
+            
+            # Use current_stop_order from DB as the source of truth for order-based logic
+            current_order = trip_info['current_stop_order']
+            route_id = trip_info['route_id']
+            
+            # Initialize trip data in cache if missing (or if order changed significantly)
+            if trip_id not in self.active_trips:
+                stops = await self.fetch_route_stops(route_id, trip_info['trip_type'])
                 self.active_trips[trip_id] = {
                     "trip_id": trip_id,
                     "route_id": route_id,
-                    "stops": stops,
-                    "tokens_by_stop": {}  # Lazy loaded
+                    "stops": stops
                 }
                 self.notified_stops[trip_id] = set()
-                logger.info(f"✅ Initialized tracking for trip {trip_id}")
-            except Exception as e:
-                logger.error(f"Error initializing proximity trip {trip_id}: {e}")
-                return {"success": False, "error": str(e)}
-
-        trip_data = self.active_trips[trip_id]
-        current_notified = self.notified_stops[trip_id]
-        current_loc = (lat, lng)
-        stops = trip_data.get("stops", [])
-        route_id = trip_data.get("route_id")
-        
-        results = []
-
-        for stop in stops:
-            stop_id = stop.get("stop_id")
-            stop_name = stop.get("stop_name")
-            try:
-                stop_lat = float(stop.get("latitude"))
-                stop_lng = float(stop.get("longitude"))
-            except (TypeError, ValueError):
-                continue
-                
-            stop_loc = (stop_lat, stop_lng)
-            dist = geodesic(current_loc, stop_loc).meters
+                logger.info(f"✅ Initialized proximity tracking for {trip_id}")
             
-            # --- Arrived Logic ---
-            if dist <= ARRIVED_RADIUS:
-                event_key = f"{stop_id}_arrived"
-                if event_key not in current_notified:
-                    logger.info(f"✨ ARRIVED at {stop_name} (dist: {dist:.1f}m)")
-                    current_notified.add(event_key)
-                    
-                    # Fetch tokens for THIS stop specifically
-                    tokens = await self.get_stop_tokens(route_id, stop_id)
-                    if tokens:
-                        await notification_service.broadcast_to_tokens(
-                            tokens, 
-                            "🚌 Bus Arrived", 
-                            f"The bus has arrived at {stop_name}.",
-                            {"trip_id": trip_id, "stop_id": stop_id, "status": "ARRIVED", "stop_name": stop_name}
-                        )
-                    results.append(f"Notified Arrived: {stop_name}")
+            trip_data = self.active_trips[trip_id]
+            stops = trip_data.get("stops", [])
+            current_notified = self.notified_stops[trip_id]
+            current_loc = (lat, lng)
             
-            # --- Approaching Logic ---
-            elif dist <= APPROACHING_RADIUS:
-                event_key = f"{stop_id}_approaching"
-                if event_key not in current_notified:
-                    logger.info(f"🔔 APPROACHING {stop_name} (dist: {dist:.1f}m)")
-                    current_notified.add(event_key)
-                    
-                    tokens = await self.get_stop_tokens(route_id, stop_id)
-                    if tokens:
-                        await notification_service.broadcast_to_tokens(
-                            tokens, 
-                            "🚌 Bus Approaching", 
-                            f"The bus is approaching {stop_name}. Please be ready.",
-                            {"trip_id": trip_id, "stop_id": stop_id, "status": "APPROACHING", "stop_name": stop_name}
-                        )
-                    results.append(f"Notified Approaching: {stop_name}")
+            results = []
 
-        return {
-            "success": True, 
-            "trip_id": trip_id, 
-            "notifications_sent": results
-        }
+            # Find the "Active" stop (just reached) and "Next" stop (approaching)
+            active_stop = next((s for s in stops if s['stop_order'] == current_order), None)
+            next_stop = next((s for s in stops if s['stop_order'] == current_order + 1), None)
+
+            # --- 1. Handle Arrived Alert for Active Stop ---
+            if active_stop:
+                try:
+                    stop_loc = (float(active_stop['latitude']), float(active_stop['longitude']))
+                    dist = geodesic(current_loc, stop_loc).meters
+                    
+                    if dist <= ARRIVED_RADIUS:
+                        event_key = f"{active_stop['stop_id']}_arrived"
+                        if event_key not in current_notified:
+                            logger.info(f"✨ ARRIVED at {active_stop['stop_name']} (order {current_order})")
+                            current_notified.add(event_key)
+                            
+                            tokens = await self.get_stop_tokens(route_id, active_stop['stop_id'])
+                            if tokens:
+                                await notification_service.broadcast_to_tokens(
+                                    tokens, 
+                                    "🚌 Bus Arrived", 
+                                    f"The bus has arrived at {active_stop['stop_name']}.",
+                                    {"trip_id": trip_id, "stop_id": active_stop['stop_id'], "status": "ARRIVED", "stop_name": active_stop['stop_name']}
+                                )
+                            results.append(f"Arrived: {active_stop['stop_name']}")
+                except (TypeError, ValueError) as e:
+                    logger.warning(f"Coordinate error for active stop {active_stop['stop_name']}: {e}")
+
+            # --- 2. Handle Approaching Alert for NEXT Stop ---
+            if next_stop:
+                try:
+                    stop_loc = (float(next_stop['latitude']), float(next_stop['longitude']))
+                    dist = geodesic(current_loc, stop_loc).meters
+                    
+                    if dist <= APPROACHING_RADIUS:
+                        event_key = f"{next_stop['stop_id']}_approaching"
+                        if event_key not in current_notified:
+                            logger.info(f"🔔 APPROACHING {next_stop['stop_name']} (order {current_order + 1})")
+                            current_notified.add(event_key)
+                            
+                            tokens = await self.get_stop_tokens(route_id, next_stop['stop_id'])
+                            if tokens:
+                                await notification_service.broadcast_to_tokens(
+                                    tokens, 
+                                    "🚌 Bus Approaching", 
+                                    f"The bus is approaching {next_stop['stop_name']}. Please be ready.",
+                                    {"trip_id": trip_id, "stop_id": next_stop['stop_id'], "status": "APPROACHING", "stop_name": next_stop['stop_name']}
+                                )
+                            results.append(f"Approaching: {next_stop['stop_name']}")
+                except (TypeError, ValueError) as e:
+                    logger.warning(f"Coordinate error for next stop {next_stop['stop_name']}: {e}")
+
+            return {
+                "success": True, 
+                "trip_id": trip_id, 
+                "current_order": current_order,
+                "notifications_sent": results
+            }
+            
+        except Exception as e:
+            import traceback
+            logger.error(f"Proximity processing error: {e}")
+            logger.error(traceback.format_exc())
+            return {"success": False, "error": str(e)}
 
     async def get_stop_tokens(self, route_id: str, stop_id: str) -> List[str]:
         """Fetch tokens for students at a specific stop specifically"""
