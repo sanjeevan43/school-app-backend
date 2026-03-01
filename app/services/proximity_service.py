@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 # Constants
 APPROACHING_RADIUS = 1000  # 1km - notification to be ready
-ARRIVED_RADIUS = 300       # 300m - actual arrival/location notification
+ARRIVED_RADIUS = 50        # 50m - actual arrival/location notification
 
 class ProximityTrackingService:
     def __init__(self):

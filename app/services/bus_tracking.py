@@ -115,8 +115,8 @@ class BusTrackingService:
                     float(stop['latitude']), float(stop['longitude'])
                 )
                 
-                # Check if we have REACHED this stop (within 0.3km)
-                if distance <= 0.3:
+                # Check if we have REACHED this stop (within 0.05km / 50m)
+                if distance <= 0.05:
                     logger.info(f"📍 Stop Reached: {stop['stop_name']} (Order {stop['stop_order']})")
                     
                     # 1. Update Database to mark this stop as the current one

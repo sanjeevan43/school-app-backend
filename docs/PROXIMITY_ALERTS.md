@@ -72,8 +72,8 @@ The system automatically filters which parents to notify based on the distance b
 | Status | Radius | Action Taken |
 | :--- | :--- | :--- |
 | **Approaching** | **500m** | Sends "Bus Approaching" notification to parents at that stop. |
-| **Arrived** | **20m** | Sends "Bus Arrived" notification to parents at that stop. |
-| **Current Stop** | **300m** | Updates the `current_stop_order` in the database to keep the route map accurate. |
+| **Arrived** | **50m** | Sends "Bus Arrived" notification to parents at that stop. |
+| **Current Stop** | **50m** | Updates the `current_stop_order` in the database to keep the route map accurate. |
 
 > **Note:** The `APPROACHING_RADIUS` can be adjusted via the `GEOFENCE_RADIUS` variable in your `.env` file.
 
@@ -85,7 +85,7 @@ The system automatically filters which parents to notify based on the distance b
 - **Body:** `The bus is approaching [Stop Name]. Please be ready.`
 
 ### 2. **Bus Arrived**
-- **Trigger:** Bus within 20m of a stop.
+- **Trigger:** Bus within 50m of a stop.
 - **Title:** `🚌 Bus Arrived`
 - **Body:** `The bus has arrived at [Stop Name].`
 
