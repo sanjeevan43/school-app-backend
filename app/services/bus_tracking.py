@@ -129,9 +129,21 @@ class BusTrackingService:
                     current_stop_info = {
                         "stop_name": stop['stop_name'],
                         "stop_order": stop['stop_order']
-                    }
-
-                    # 2. Notify the students of the NEXT stop in sequence
+                    }                    # 2. Notify the students of the CURRENT stop that the bus has arrived (300m radius works better than 20m)
+                    curr_students = self.get_students_for_route_stop(trip['route_id'], stop['stop_order'], trip['trip_type'])
+                    if curr_students:
+                        curr_student_ids = [st['student_id'] for st in curr_students]
+                        curr_tokens = self.get_parent_tokens_for_students(curr_student_ids)
+                        if curr_tokens:
+                            await notification_service.broadcast_to_tokens(
+                                list(set(curr_tokens)),
+                                "🔔 Bus Arrived",
+                                "Bus arrived your stop",
+                                {"trip_id": trip_id, "stop_name": stop['stop_name'], "status": "ARRIVED"}
+                            )
+                            logger.info(f"🔔 Bus Arrived notification sent for {stop['stop_name']}")
+                   
+                    # 3. Notify the students of the NEXT stop in sequence
                     next_order = stop['stop_order'] + 1
                     next_stop = next((s for s in stops if s['stop_order'] == next_order), None)
                     
