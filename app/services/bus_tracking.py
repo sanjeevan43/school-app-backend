@@ -104,7 +104,7 @@ class BusTrackingService:
             current_stop_order = trip['current_stop_order']
             
             # --- Logic for First Stop 500m Alert (Stored in DB) ---
-            if current_stop_order < 1 and not trip['first_stop_notified']:
+            if current_stop_order < 1 and not trip.get('is_first_stop_notified'):
                 first_stop = next((s for s in stops if s['stop_order'] == 1), None)
                 if first_stop:
                     dist_to_first = self.calculate_distance(
@@ -117,7 +117,7 @@ class BusTrackingService:
                         if students:
                             await self._broadcast_helper(students, "🚌 Bus Upcoming", "Your bus will reach in few minutes", {"trip_id": trip_id, "stop_name": first_stop['stop_name'], "status": "UPCOMING"})
                         
-                        execute_query("UPDATE trips SET first_stop_notified = True WHERE trip_id = %s", (trip_id,))
+                        execute_query("UPDATE trips SET is_first_stop_notified = 1 WHERE trip_id = %s", (trip_id,))
             
             # --- Strict Sequential Stop Logic ---
             # Only consider the NEXT stop in order
