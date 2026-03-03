@@ -115,15 +115,15 @@ class BusTrackingService:
                         logger.info(f"🔔 Notifying first stop 500m alert: {first_stop['stop_name']}")
                         students = self.get_students_for_route_stop(trip['route_id'], 1, trip['trip_type'])
                         if students:
-                            await self._broadcast_helper(students, "🚌 Bus Upcoming", "Your bus will reach in few minutes", {"trip_id": trip_id, "stop_name": first_stop['stop_name'], "status": "UPCOMING"})
+                            await self._broadcast_helper(students, "🚌 Bus Upcoming", f"Your bus is approaching {first_stop['stop_name']}.", {"trip_id": trip_id, "stop_name": first_stop['stop_name'], "status": "UPCOMING"})
                         
                         execute_query("UPDATE trips SET is_first_stop_notified = 1 WHERE trip_id = %s", (trip_id,))
             
             # --- Smart Lookahead Stop Logic (Handles Skips) ---
-            # Consider the next 3 stops, but EXCLUDE any that are explicitly marked as "skipped"
+            # Consider the next 5 stops, but EXCLUDE any that are explicitly marked as "skipped"
             skipped_list = json.loads(trip['skipped_stops']) if trip.get('skipped_stops') else []
             
-            lookahead_stops = [s for s in stops if s['stop_order'] > current_stop_order and s['stop_order'] not in skipped_list][:3]
+            lookahead_stops = [s for s in stops if s['stop_order'] > current_stop_order and s['stop_order'] not in skipped_list][:5]
             
             stops_passed = 0
             current_stop_info = None
@@ -159,7 +159,7 @@ class BusTrackingService:
                 # A. Arrival Notification for current stop (Stop N)
                 students_N = self.get_students_for_route_stop(trip['route_id'], target_order, trip['trip_type'])
                 if students_N:
-                    await self._broadcast_helper(students_N, "🚌 Bus Arrived", "Your bus has arrived at your stop.", {"trip_id": trip_id, "stop_name": arrived_stop['stop_name'], "status": "ARRIVED"})
+                    await self._broadcast_helper(students_N, "🚌 Bus Arrived", f"Your bus has arrived at {arrived_stop['stop_name']}.", {"trip_id": trip_id, "stop_name": arrived_stop['stop_name'], "status": "ARRIVED"})
 
                 # B. Approaching Notification for the future next stop (Stop N + 1)
                 next_next_order = target_order + 1
@@ -171,19 +171,25 @@ class BusTrackingService:
                 upcoming_order = target_order + 2
                 students_N2 = self.get_students_for_route_stop(trip['route_id'], upcoming_order, trip['trip_type'])
                 if students_N2:
-                    await self._broadcast_helper(students_N2, "🚌 Bus Upcoming", f"Your bus reached this stop ({arrived_stop['stop_name']})", {"trip_id": trip_id, "status": "UPCOMING"})
+                    await self._broadcast_helper(students_N2, "🚌 Bus Upcoming", f"Your bus reached {arrived_stop['stop_name']}.", {"trip_id": trip_id, "status": "UPCOMING"})
 
                 # D. Early Notification for Stop N + 3
                 upcoming_order_3 = target_order + 3
                 students_N3 = self.get_students_for_route_stop(trip['route_id'], upcoming_order_3, trip['trip_type'])
                 if students_N3:
-                    await self._broadcast_helper(students_N3, "🚌 Bus Upcoming", f"Your bus reached this stop ({arrived_stop['stop_name']})", {"trip_id": trip_id, "status": "UPCOMING"})
+                    await self._broadcast_helper(students_N3, "🚌 Bus Upcoming", f"Your bus reached {arrived_stop['stop_name']}.", {"trip_id": trip_id, "status": "UPCOMING"})
 
                 # E. Early Notification for Stop N + 4
                 upcoming_order_4 = target_order + 4
                 students_N4 = self.get_students_for_route_stop(trip['route_id'], upcoming_order_4, trip['trip_type'])
                 if students_N4:
-                    await self._broadcast_helper(students_N4, "🚌 Bus Upcoming", f"Your bus reached this stop ({arrived_stop['stop_name']})", {"trip_id": trip_id, "status": "UPCOMING"})
+                    await self._broadcast_helper(students_N4, "🚌 Bus Upcoming", f"Your bus reached {arrived_stop['stop_name']}.", {"trip_id": trip_id, "status": "UPCOMING"})
+
+                # F. Early Notification for Stop N + 5
+                upcoming_order_5 = target_order + 5
+                students_N5 = self.get_students_for_route_stop(trip['route_id'], upcoming_order_5, trip['trip_type'])
+                if students_N5:
+                    await self._broadcast_helper(students_N5, "🚌 Bus Upcoming", f"Your bus reached {arrived_stop['stop_name']}.", {"trip_id": trip_id, "status": "UPCOMING"})
 
             return {
                 "success": True,
@@ -275,6 +281,24 @@ class BusTrackingService:
             students_N2 = self.get_students_for_route_stop(trip['route_id'], upcoming_order, trip['trip_type'])
             if students_N2:
                 await self._broadcast_helper(students_N2, "🚌 Bus Upcoming", f"Your bus passed {skipped_stop['stop_name']}", {"trip_id": trip_id, "status": "UPCOMING"})
+
+            # C. Early Notification for Stop N + 3
+            upcoming_order_3 = target_skip_order + 3
+            students_N3 = self.get_students_for_route_stop(trip['route_id'], upcoming_order_3, trip['trip_type'])
+            if students_N3:
+                await self._broadcast_helper(students_N3, "🚌 Bus Upcoming", f"Your bus passed {skipped_stop['stop_name']}", {"trip_id": trip_id, "status": "UPCOMING"})
+
+            # D. Early Notification for Stop N + 4
+            upcoming_order_4 = target_skip_order + 4
+            students_N4 = self.get_students_for_route_stop(trip['route_id'], upcoming_order_4, trip['trip_type'])
+            if students_N4:
+                await self._broadcast_helper(students_N4, "🚌 Bus Upcoming", f"Your bus passed {skipped_stop['stop_name']}", {"trip_id": trip_id, "status": "UPCOMING"})
+
+            # E. Early Notification for Stop N + 5
+            upcoming_order_5 = target_skip_order + 5
+            students_N5 = self.get_students_for_route_stop(trip['route_id'], upcoming_order_5, trip['trip_type'])
+            if students_N5:
+                await self._broadcast_helper(students_N5, "🚌 Bus Upcoming", f"Your bus passed {skipped_stop['stop_name']}", {"trip_id": trip_id, "status": "UPCOMING"})
 
             return {
                 "success": True, 
