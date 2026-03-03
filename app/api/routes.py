@@ -2261,6 +2261,28 @@ async def update_trip_status(trip_id: str, status_update: TripStatusUpdate):
         raise HTTPException(status_code=404, detail="Trip not found")
     return await get_trip(trip_id)
 
+@router.post("/trips/{trip_id}/skip-next-stop", tags=["Trips"])
+async def skip_next_stop(trip_id: str):
+    """
+    POST: Manually skip the NEXT target stop (current_stop_order + 1) for an ongoing trip.
+    This triggers notifications for subsequent stops but NOT for the skipped stop.
+    """
+    result = await bus_tracking_service.skip_stop(trip_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("message", "Failed to skip stop"))
+    return result
+
+@router.post("/trips/{trip_id}/skip-future-stop/{stop_order}", tags=["Trips"])
+async def skip_future_stop(trip_id: str, stop_order: int):
+    """
+    POST: Mark any specific future stop as "Skipped" for this trip.
+    The bus will ignore this stop order during its live tracking.
+    """
+    result = await bus_tracking_service.skip_specific_stop(trip_id, stop_order)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("message", "Failed to exclude stop"))
+    return result
+
 @router.delete("/trips/{trip_id}", tags=["Trips"])
 async def delete_trip(trip_id: str):
     """Delete trip"""
@@ -2806,6 +2828,8 @@ async def send_custom_notification(notification: NotificationRequest):
         
         return {"success": False, "message": "No parents to notify"}
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Custom notification error: {e}")
         raise HTTPException(status_code=500, detail="Failed to send notification")
@@ -2816,6 +2840,8 @@ async def update_fcm_cache(route_id: str):
     try:
         result = bus_tracking_service.update_route_fcm_cache(route_id)
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"FCM cache update error: {e}")
         raise HTTPException(status_code=500, detail="Failed to update FCM cache")

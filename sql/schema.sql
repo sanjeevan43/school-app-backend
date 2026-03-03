@@ -161,6 +161,7 @@ CREATE TABLE IF NOT EXISTS `trips` (
   `trip_type` enum('PICKUP','DROP') NOT NULL,
   `status` enum('NOT_STARTED','ONGOING','PAUSED','COMPLETED','CANCELED') DEFAULT 'NOT_STARTED',
   `current_stop_order` int DEFAULT '0',
+  `skipped_stops` json DEFAULT NULL,
   `is_first_stop_notified` tinyint(1) DEFAULT '0',
   `started_at` timestamp NULL DEFAULT NULL,
   `ended_at` timestamp NULL DEFAULT NULL,
