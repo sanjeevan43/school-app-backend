@@ -2237,6 +2237,27 @@ async def delete_student(student_id: str):
 # TRIP ENDPOINTS
 # =====================================================
 
+
+def _format_trip_logs(trip):
+    """Helper to parse JSON fields for a single trip dict"""
+    if not trip:
+        return trip
+    if 'stop_logs' in trip and isinstance(trip['stop_logs'], str):
+        try:
+            import json
+            trip['stop_logs'] = json.loads(trip['stop_logs'])
+        except:
+            trip['stop_logs'] = []
+    elif 'stop_logs' not in trip:
+        trip['stop_logs'] = None
+    return trip
+
+def _format_trips_logs(trips):
+    """Helper to parse JSON fields for a list of trip dicts"""
+    if not trips:
+        return []
+    return [_format_trip_logs(t) for t in trips]
+
 @router.post("/trips", response_model=TripResponse, tags=["Trips"])
 async def create_trip(trip: TripCreate):
     """Create a new trip"""
@@ -2259,7 +2280,7 @@ async def get_all_trips():
     """Get all trips"""
     query = "SELECT * FROM trips ORDER BY trip_date DESC, created_at DESC"
     trips = execute_query(query, fetch_all=True)
-    return trips or []
+    return _format_trips_logs(trips)
 
 @router.get("/trips/{trip_id}", response_model=TripResponse, tags=["Trips"])
 async def get_trip(trip_id: str):
@@ -2269,22 +2290,14 @@ async def get_trip(trip_id: str):
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
     
-    # Process JSON fields if they come back as strings (common with some MySQL drivers)
-    if trip.get('stop_logs') and isinstance(trip['stop_logs'], str):
-        try:
-            import json
-            trip['stop_logs'] = json.loads(trip['stop_logs'])
-        except:
-            trip['stop_logs'] = []
-            
-    return trip
+    return _format_trip_logs(trip)
 
 @router.get("/trips/ongoing/all", response_model=List[TripResponse], tags=["Trips"])
 async def get_ongoing_trips():
     """Get all ongoing trips"""
     query = "SELECT * FROM trips WHERE status = 'ONGOING' ORDER BY started_at DESC"
     trips = execute_query(query, fetch_all=True)
-    return trips or []
+    return _format_trips_logs(trips)
 
 @router.put("/trips/{trip_id}", response_model=TripResponse, tags=["Trips"])
 async def update_trip(trip_id: str, trip_update: TripUpdate):
@@ -2476,14 +2489,14 @@ async def get_trips_by_driver(driver_id: str):
     """Get all trips for a specific driver"""
     query = "SELECT * FROM trips WHERE driver_id = %s ORDER BY trip_date DESC"
     trips = execute_query(query, (driver_id,), fetch_all=True)
-    return trips or []
+    return _format_trips_logs(trips)
 
 @router.get("/trips/by-route/{route_id}", response_model=List[TripResponse], tags=["Trips"])
 async def get_trips_by_route(route_id: str):
     """Get all trips for a specific route"""
     query = "SELECT * FROM trips WHERE route_id = %s ORDER BY trip_date DESC"
     trips = execute_query(query, (route_id,), fetch_all=True)
-    return trips or []
+    return _format_trips_logs(trips)
 
 @router.get("/students/by-route/{route_id}", response_model=List[StudentResponse], tags=["Students"])
 async def get_students_by_route(route_id: str, active_filter: ActiveFilter = ActiveFilter.ACTIVE_ONLY):
@@ -2967,7 +2980,7 @@ async def get_active_and_pending_trips():
     """Get all active/ongoing trips (includes NOT_STARTED and ONGOING)"""
     query = "SELECT * FROM trips WHERE status IN ('ONGOING', 'NOT_STARTED') ORDER BY trip_date DESC"
     trips = execute_query(query, fetch_all=True)
-    return trips or []
+    return _format_trips_logs(trips)
 
 @router.put("/trips/{trip_id}/start", response_model=TripResponse, tags=["Trips"])
 async def start_trip(trip_id: str):
