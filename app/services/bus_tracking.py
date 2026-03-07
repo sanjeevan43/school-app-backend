@@ -187,19 +187,21 @@ class BusTrackingService:
                 logger.info(f"📍 Stop Reached: {arrived_stop['stop_name']} (Order {target_order})")
                 
                 # 1. Update Database (skips over previous stops automatically and updates stop_logs - Self-Healing)
-                new_stop_logs = []
-                if trip.get('stop_logs'):
+                new_stop_logs = {}
+                if 'stop_logs' in trip:
                     try:
                         import json
                         current_logs = trip['stop_logs']
                         if isinstance(current_logs, str):
                             current_logs = json.loads(current_logs)
                         
-                        if isinstance(current_logs, list):
-                            for entry in current_logs:
-                                # Fill-in missed stops logic: mark everything up to current as arrived
-                                if entry['stop_order'] <= target_order and entry['arrived_at'] is None:
-                                    entry['arrived_at'] = datetime.now().isoformat()
+                        if isinstance(current_logs, dict):
+                            # Mark intermediate missed stops
+                            for s in stops:
+                                if s['stop_order'] <= target_order:
+                                    s_id = s['stop_id']
+                                    if s_id not in current_logs:
+                                        current_logs[s_id] = datetime.now().isoformat()
                             new_stop_logs = current_logs
                     except Exception as json_err:
                         logger.error(f"Error updating stop_logs JSON: {json_err}")
@@ -289,13 +291,27 @@ class BusTrackingService:
             if stop_order not in skipped:
                 skipped.append(stop_order)
             
-            # 3. Update DB
+            # 3. Update stop_logs JSON trail
+            current_stop_logs = {}
+            if result.get('stop_logs'):
+                 try:
+                     current_stop_logs = json.loads(result['stop_logs']) if isinstance(result['stop_logs'], str) else result['stop_logs']
+                 except:
+                     current_stop_logs = {}
+            
+            # Find stop_id for this order to mark as SKIPPED
+            order_field = "pickup_stop_order" if result.get('trip_type') == "PICKUP" else "drop_stop_order"
+            stop_res = execute_query(f"SELECT stop_id FROM route_stops WHERE route_id = %s AND {order_field} = %s", (result['route_id'], stop_order), fetch_one=True)
+            if stop_res:
+                current_stop_logs[stop_res['stop_id']] = "SKIPPED"
+
+            # 4. Update DB
             execute_query(
-                "UPDATE trips SET skipped_stops = %s, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s",
-                (json.dumps(skipped), trip_id)
+                "UPDATE trips SET skipped_stops = %s, stop_logs = %s, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s",
+                (json.dumps(skipped), json.dumps(current_stop_logs), trip_id)
             )
 
-            # 4. Trigger alert for next stops just in case we were currently "at" the skipped stop
+            # 5. Trigger alert for next stops just in case we were currently "at" the skipped stop
             logger.info(f"🚫 Stop {stop_order} manually excluded from trip {trip_id}")
 
             return {"success": True, "message": f"Stop {stop_order} skipped for this trip", "skipped_stops": skipped}
@@ -324,9 +340,21 @@ class BusTrackingService:
                  return {"success": False, "message": "No more stops to skip"}
 
             # 3. Update DB: Move to the next stop order
+            current_stop_logs = {}
+            if trip.get('stop_logs'):
+                try:
+                    current_stop_logs = json.loads(trip['stop_logs']) if isinstance(trip['stop_logs'], str) else trip['stop_logs']
+                except:
+                    current_stop_logs = {}
+            
+            # Find stop_id to mark as SKIPPED
+            stop_id_res = execute_query(f"SELECT stop_id FROM route_stops WHERE route_id = %s AND {order_field} = %s", (trip['route_id'], target_skip_order), fetch_one=True)
+            if stop_id_res:
+                current_stop_logs[stop_id_res['stop_id']] = "SKIPPED"
+
             execute_query(
-                "UPDATE trips SET current_stop_order = %s, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s",
-                (target_skip_order, trip_id)
+                "UPDATE trips SET current_stop_order = %s, stop_logs = %s, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s",
+                (target_skip_order, json.dumps(current_stop_logs), trip_id)
             )
 
             logger.info(f"⏭️ Manual Skip: Stop {skipped_stop['stop_name']} (Order {target_skip_order})")

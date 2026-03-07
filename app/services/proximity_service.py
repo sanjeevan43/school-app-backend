@@ -133,16 +133,7 @@ class ProximityTrackingService:
             trip_info = execute_query("SELECT trip_type FROM trips WHERE trip_id = %s", (trip_id,), fetch_one=True)
             trip_type = trip_info['trip_type'] if trip_info else "PICKUP"
             
-            # Fetch stops for this route to initialize stop_logs
-            stops = await self.fetch_route_stops(route_id, trip_type)
-            stop_logs = [
-                {
-                    "stop_id": s['stop_id'],
-                    "stop_name": s['stop_name'],
-                    "stop_order": s['stop_order'],
-                    "arrived_at": None
-                } for s in stops
-            ]
+            stop_logs = {}
             import json
             
             # Update trip status in DB and initialize stop_logs

@@ -2247,7 +2247,7 @@ def _format_trip_logs(trip):
             import json
             trip['stop_logs'] = json.loads(trip['stop_logs'])
         except:
-            trip['stop_logs'] = []
+            trip['stop_logs'] = {}
     elif 'stop_logs' not in trip:
         trip['stop_logs'] = None
     return trip
@@ -2363,7 +2363,7 @@ async def skip_future_stop(trip_id: str, stop_order: int):
 
 @router.get("/trips/{trip_id}/stop-logs", tags=["Trips"])
 async def get_trip_stop_logs(trip_id: str):
-    """GET: Returns the current stop logs (JSON list) for any trip"""
+    """GET: Returns the current stop logs (JSON dictionary) for any trip"""
     query = "SELECT stop_logs FROM trips WHERE trip_id = %s"
     result = execute_query(query, (trip_id,), fetch_one=True)
     if not result:
@@ -2371,10 +2371,10 @@ async def get_trip_stop_logs(trip_id: str):
     
     stop_logs = result.get('stop_logs')
     if stop_logs is None:
-        return []
+        return {}
     
-    # If it's already a list (DictCursor and pymysql usually handle JSON columns)
-    if isinstance(stop_logs, list):
+    # If it's already a dict (DictCursor and pymysql usually handle JSON columns)
+    if isinstance(stop_logs, dict):
         return stop_logs
         
     # Fallback to manual parsing if it's a string
@@ -2382,7 +2382,7 @@ async def get_trip_stop_logs(trip_id: str):
         import json
         return json.loads(stop_logs)
     except:
-        return []
+        return {}
 
 @router.delete("/trips/{trip_id}", tags=["Trips"])
 async def delete_trip(trip_id: str):

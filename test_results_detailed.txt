@@ -1,59 +1,113 @@
 
 --- Testing Get All Trips (GET /trips) ---
 Status Code: 200
-Count: 29
+Count: 30
 First item: {
-  "trip_id": "01250793-ae20-4f32-8ace-cf65eae86207",
-  "bus_id": "52c67716-8234-45b5-bfdb-153e4f788685",
-  "driver_id": "e3d16034-6cbc-4678-8db7-2ceff58025f6",
-  "route_id": "c4f616e3-fb89-4832-8707-eac8422144a7",
-  "trip_date": "2026-03-06",
+  "trip_id": "b9ece655-593f-4e3e-a81a-a8d45ee2718b",
+  "bus_id": "d29a7dbb-5962-46e4-b6fd-34a5665b0646",
+  "driver_id": "d36c45e0-8846-475b-ae47-b2a6f69eb75e",
+  "route_id": "a9440a08-ec23-4bd6-8bc4-bb1f5522546d",
+  "trip_date": "2026-03-07",
   "trip_type": "PICKUP",
   "status": "COMPLETED",
   "current_stop_order": 0,
   "skipped_stops": null,
   "stop_logs": [
     {
-      "stop_id": "9d4ef50c-325d-4b46-99f3-5f6984570da2",
-      "stop_name": "test",
+      "stop_id": "daa2b7a9-1690-4b77-b9a5-38881c42a6b3",
+      "stop_name": "Mullikulathur",
       "arrived_at": null,
       "stop_order": 1
     },
     {
-      "stop_id": "76bd3cbb-be2b-4ae9-8fe7-29c00f8495e6",
-      "stop_name": "Kovilur",
+      "stop_id": "bd0037fa-52b3-4640-a9e8-05a5b11bbb44",
+      "stop_name": "Mullikulathur stop 2",
       "arrived_at": null,
       "stop_order": 2
     },
     {
-      "stop_id": "5545834a-69ce-4afa-a686-b43c6464dfef",
-      "stop_name": "kovilur 2",
+      "stop_id": "5b8f5b32-c420-41c8-94b9-c96814c23454",
+      "stop_name": "Checken center",
       "arrived_at": null,
       "stop_order": 3
     },
     {
-      "stop_id": "a0b20706-8aa3-423a-bb22-f4ef5b392201",
-      "stop_name": "helmet shop",
+      "stop_id": "31c6cbc2-1662-4e82-9c07-63b0f9fe9d8c",
+      "stop_name": "Police colony",
       "arrived_at": null,
       "stop_order": 4
     },
     {
-      "stop_id": "fc895ac1-7060-4a3a-b38e-8b0f19c52d37",
-      "stop_name": "first beet",
+      "stop_id": "008d6be3-cc62-45dd-b9fe-0da2efe0ef1a",
+      "stop_name": "Vinayagar street",
       "arrived_at": null,
       "stop_order": 5
     },
     {
-      "stop_id": "cdad8fa9-9be1-4696-9cdf-a369beb245d7",
-      "stop_name": "kalani vaasal",
+      "stop_id": "b039c5d0-3dae-429c-b721-2f499987825c",
+      "stop_name": "Police station road",
       "arrived_at": null,
       "stop_order": 6
+    },
+    {
+      "stop_id": "56a34bd1-454e-4b9e-9a51-1b1f661ecb56",
+      "stop_name": "Tang street",
+      "arrived_at": null,
+      "stop_order": 7
+    },
+    {
+      "stop_id": "0f80d761-f175-4356-8311-91a0779da473",
+      "stop_name": "Masuthi street",
+      "arrived_at": null,
+      "stop_order": 8
+    },
+    {
+      "stop_id": "1e301c51-f09b-4a45-9139-53dda11f4ff1",
+      "stop_name": "Ruthran Kovil",
+      "arrived_at": null,
+      "stop_order": 9
+    },
+    {
+      "stop_id": "5f8ffbcb-c2bc-4310-8cf7-090c30fa7caa",
+      "stop_name": "Rudran Kovil stop 2",
+      "arrived_at": null,
+      "stop_order": 10
+    },
+    {
+      "stop_id": "8b7d62ac-1508-4338-af8b-e63c62c4dab7",
+      "stop_name": "Aravinth tiles",
+      "arrived_at": null,
+      "stop_order": 11
+    },
+    {
+      "stop_id": "f00faea6-0f5b-4317-94b9-2cb4f52c9b9f",
+      "stop_name": "Mangalam main road",
+      "arrived_at": null,
+      "stop_order": 12
+    },
+    {
+      "stop_id": "e00e411b-ce96-46be-a846-12bfb0f1d960",
+      "stop_name": "Mangalam stop 2",
+      "arrived_at": null,
+      "stop_order": 13
+    },
+    {
+      "stop_id": "89c808bc-9a26-4e23-bfe4-6162952e6671",
+      "stop_name": "Veeranam road",
+      "arrived_at": null,
+      "stop_order": 14
+    },
+    {
+      "stop_id": "38e515cc-5b6a-461e-9460-e14080bb39b3",
+      "stop_name": "Veeranam road stop 2",
+      "arrived_at": null,
+      "stop_order": 15
     }
   ],
-  "started_at": "2026-03-06T15:57:45",
-  "ended_at": "2026-03-06T15:58:22",
-  "created_at": "2026-03-06T15:57:44",
-  "updated_at": "2026-03-06T15:58:22"
+  "started_at": "2026-03-07T03:09:47",
+  "ended_at": "2026-03-07T03:50:38",
+  "created_at": "2026-03-07T03:09:46",
+  "updated_at": "2026-03-07T03:50:38"
 }
 
 --- Testing Get Single Trip (GET /trips/6348b2c4-f060-4405-b56c-602460d7e543) ---
@@ -82,20 +136,20 @@ Response: {
   "message": "Test Message",
   "student_id": "6e4c5102-20a6-413b-8ffc-7ad5d662f228",
   "sent_by_admin_id": "5081a93e-1533-4932-bf34-cd5b33a3606e",
-  "notification_id": "b7156903-b30b-4443-a653-fea5b360ea4c",
-  "created_at": "2026-03-06T17:53:41"
+  "notification_id": "9e963a5e-2352-439d-b2c6-eb8081c80ecf",
+  "created_at": "2026-03-07T08:00:35"
 }
 
 --- Testing Get Notifs by Student (GET /admin-parent-notifications/student/6e4c5102-20a6-413b-8ffc-7ad5d662f228) ---
 Status Code: 200
-Count: 4
+Count: 5
 First item: {
   "title": "Test Title",
   "message": "Test Message",
   "student_id": "6e4c5102-20a6-413b-8ffc-7ad5d662f228",
   "sent_by_admin_id": "5081a93e-1533-4932-bf34-cd5b33a3606e",
-  "notification_id": "b7156903-b30b-4443-a653-fea5b360ea4c",
-  "created_at": "2026-03-06T17:53:41"
+  "notification_id": "9e963a5e-2352-439d-b2c6-eb8081c80ecf",
+  "created_at": "2026-03-07T08:00:35"
 }
 
 --- Testing Get FCM Tokens by Location (GET /fcm-tokens/by-location/test) ---
