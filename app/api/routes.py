@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, File, UploadFile
+from fastapi import APIRouter, HTTPException, status, File, UploadFile, Body
 from fastapi.responses import JSONResponse
 from typing import List, Optional
 from datetime import datetime, date
@@ -20,8 +20,23 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # =====================================================
-# USER PROFILE
+# USER PROFILE & AUTHENTICATION
 # =====================================================
+
+@router.post("/auth/logout", tags=["Authentication"])
+async def logout(fcm_token: Optional[str] = Body(None, embed=True)):
+    """
+    Logout the user and remove their FCM token.
+    This handles token removal for Parents, Students, and Drivers.
+    Call this when the user explicitly logs out or when the app is being uninstalled/reset.
+    """
+    if fcm_token:
+        # Remove from fcm_tokens table (primarily Parents/Students)
+        execute_query("DELETE FROM fcm_tokens WHERE fcm_token = %s", (fcm_token,))
+        # Remove from drivers table (Direct column)
+        execute_query("UPDATE drivers SET fcm_token = NULL WHERE fcm_token = %s", (fcm_token,))
+        logger.info(f"FCM token removed during logout: {fcm_token}")
+    return {"message": "Logged out successfully and FCM token removed"}
 
 
 @router.get("/auth/admin/profile/phone/{phone}", tags=["Authentication"], response_model=AdminResponse)
@@ -514,7 +529,7 @@ async def get_parent_students(parent_id: str):
 
 @router.put("/parents/{parent_id}/fcm-token", tags=["Parents"])
 async def update_parent_fcm_token(parent_id: str, fcm_data: dict):
-    """Update FCM token for parent when they login"""
+    """Update FCM token for parent with Force Logout for single device login"""
     try:
         fcm_token = fcm_data.get("fcm_token")
         if not fcm_token:
@@ -524,6 +539,23 @@ async def update_parent_fcm_token(parent_id: str, fcm_data: dict):
         parent = execute_query("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,), fetch_one=True)
         if not parent:
             raise HTTPException(status_code=404, detail="Parent not found")
+        
+        # Force Logout Logic
+        old_token_query = "SELECT fcm_token FROM fcm_tokens WHERE parent_id = %s"
+        old_token_data = execute_query(old_token_query, (parent_id,), fetch_one=True)
+        
+        if old_token_data and old_token_data['fcm_token'] != fcm_token:
+            logger.info(f"Multi-device login for parent {parent_id}. Force logging out old device.")
+            await notification_service.send_force_logout(old_token_data['fcm_token'])
+            await notification_service.send_to_device(
+                title="Login Successful",
+                body="You have successfully logged in on this device. Your previous sessions have been logged out.",
+                token=fcm_token,
+                recipient_type="parent",
+                message_type="text"
+            )
+            # Delete old record to satisfy UNIQUE constraint if token is different
+            execute_query("DELETE FROM fcm_tokens WHERE parent_id = %s", (parent_id,))
         
         # Update or insert FCM token
         query = """
@@ -537,7 +569,7 @@ async def update_parent_fcm_token(parent_id: str, fcm_data: dict):
         execute_query(query, (fcm_id, fcm_token, parent_id))
         
         return {
-            "message": "FCM token updated successfully",
+            "message": "FCM token updated successfully (Single Device Mode enforced)",
             "parent_id": parent_id
         }
         
@@ -549,38 +581,9 @@ async def update_parent_fcm_token(parent_id: str, fcm_data: dict):
 
 @router.patch("/parents/{parent_id}/fcm-token", tags=["Parents"])
 async def patch_parent_fcm_token(parent_id: str, fcm_data: dict):
-    """PATCH: Update parent FCM token"""
-    try:
-        fcm_token = fcm_data.get("fcm_token")
-        if not fcm_token:
-            raise HTTPException(status_code=400, detail="fcm_token is required")
-        
-        # Check if parent exists
-        parent = execute_query("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,), fetch_one=True)
-        if not parent:
-            raise HTTPException(status_code=404, detail="Parent not found")
-        
-        # Update or insert FCM token
-        query = """
-        INSERT INTO fcm_tokens (fcm_id, fcm_token, parent_id) 
-        VALUES (%s, %s, %s)
-        ON DUPLICATE KEY UPDATE 
-        fcm_token = VALUES(fcm_token),
-        updated_at = CURRENT_TIMESTAMP
-        """
-        fcm_id = str(uuid.uuid4())
-        execute_query(query, (fcm_id, fcm_token, parent_id))
-        
-        return {
-            "message": "FCM token updated successfully",
-            "parent_id": parent_id
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Update parent FCM token error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update FCM token")
+    """PATCH: Update parent FCM token with Force Logout support"""
+    # Simply reuse the logic from the PUT endpoint
+    return await update_parent_fcm_token(parent_id, fcm_data)
 
 @router.get("/parents/fcm-tokens/all", tags=["Parents"])
 async def get_all_parent_fcm_tokens():
@@ -722,15 +725,34 @@ async def update_driver_status(driver_id: str, status_update: DriverStatusUpdate
 
 @router.patch("/drivers/{driver_id}/fcm-token", response_model=DriverResponse, tags=["Drivers"])
 async def patch_driver_fcm_token(driver_id: str, fcm_data: dict):
-    """PATCH: Update driver FCM token"""
+    """PATCH: Update driver FCM token with Force Logout for single device login"""
     fcm_token = fcm_data.get("fcm_token")
     if not fcm_token:
         raise HTTPException(status_code=400, detail="fcm_token is required")
     
-    query = "UPDATE drivers SET fcm_token = %s, updated_at = CURRENT_TIMESTAMP WHERE driver_id = %s"
-    result = execute_query(query, (fcm_token, driver_id))
-    if result == 0:
+    # Check for existing token
+    old_driver = execute_query("SELECT fcm_token FROM drivers WHERE driver_id = %s", (driver_id,), fetch_one=True)
+    if not old_driver:
         raise HTTPException(status_code=404, detail="Driver not found")
+         
+    if old_driver['fcm_token'] and old_driver['fcm_token'] != fcm_token:
+        logger.info(f"Multi-device login detected for driver: {driver_id}. Force logging out old device.")
+        # 1. Notify old device
+        await notification_service.send_force_logout(old_driver['fcm_token'])
+        
+        # 2. Notify new device
+        await notification_service.send_to_device(
+            title="Login Successful",
+            body="You have successfully logged in on this device. Your previous sessions have been logged out for security.",
+            token=fcm_token,
+            recipient_type="driver",
+            message_type="text"
+        )
+
+    # 3. Update to new token
+    query = "UPDATE drivers SET fcm_token = %s, updated_at = CURRENT_TIMESTAMP WHERE driver_id = %s"
+    execute_query(query, (fcm_token, driver_id))
+    
     return await get_driver(driver_id)
 
 @router.get("/drivers/fcm-tokens/all", tags=["Drivers"])
@@ -2574,15 +2596,25 @@ async def create_fcm_token(fcm_token: FCMTokenCreate):
             
             # If old token exists and is different from the new one
             if old_token_data and old_token_data['fcm_token'] != fcm_token.fcm_token:
-                logger.info(f"Force logging out old device for parent: {fcm_token.parent_id}")
-                # 1. Send FCM notification to old token with logout command
+                logger.info(f"Multi-device login detected. Force logging out old device for parent: {fcm_token.parent_id}")
+                
+                # 1. Send FCM notification to OLD token with logout command
                 await notification_service.send_force_logout(old_token_data['fcm_token'])
                 
-                # 2. Delete old token from database to maintain single device rule
+                # 2. ALSO notify the NEW device that it has taken over
+                await notification_service.send_to_device(
+                    title="Login Successful",
+                    body="You have successfully logged in on this device. Your previous sessions have been logged out for security.",
+                    token=fcm_token.fcm_token,
+                    recipient_type="parent",
+                    message_type="text"
+                )
+                
+                # 3. Delete old token from database to maintain single device rule
                 delete_query = "DELETE FROM fcm_tokens WHERE parent_id = %s"
                 execute_query(delete_query, (fcm_token.parent_id,))
 
-        # 3. Save/Update new token
+        # 4. Save/Update new token
         query = """
         INSERT INTO fcm_tokens (fcm_id, fcm_token, student_id, parent_id)
         VALUES (%s, %s, %s, %s)
@@ -2593,8 +2625,6 @@ async def create_fcm_token(fcm_token: FCMTokenCreate):
         """
         execute_query(query, (fcm_id, fcm_token.fcm_token, fcm_token.student_id, fcm_token.parent_id))
         
-        # Get the actual ID of the token (either new or updated)
-        # If it was updated, we need to find the ID by token
         final_token = execute_query("SELECT fcm_id FROM fcm_tokens WHERE fcm_token = %s", (fcm_token.fcm_token,), fetch_one=True)
         return await get_fcm_token(final_token['fcm_id'])
     except Exception as e:
@@ -3183,4 +3213,72 @@ async def check_app_version(request: AppVersionCheckRequest):
         logger.error(f"Error checking app version: {e}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Failed to check app version: {str(e)}")
+
+# --- Admin Management for App Versions ---
+
+@router.get("/app-versions", response_model=List[AppVersionFullResponse], tags=["Mobile App Versioning"])
+async def get_all_app_versions():
+    """Admin: Get all configured app versions"""
+    query = "SELECT * FROM app_versions ORDER BY updated_at DESC"
+    return execute_query(query, fetch_all=True) or []
+
+@router.get("/app-versions/{version_id}", response_model=AppVersionFullResponse, tags=["Mobile App Versioning"])
+async def get_app_version(version_id: str):
+    """Admin: Get specific app version configuration"""
+    query = "SELECT * FROM app_versions WHERE id = %s"
+    version = execute_query(query, (version_id,), fetch_one=True)
+    if not version:
+        raise HTTPException(status_code=404, detail="Version configuration not found")
+    return version
+
+@router.post("/app-versions", response_model=AppVersionFullResponse, tags=["Mobile App Versioning"])
+async def create_app_version(version: AppVersionCreate):
+    """Admin: Create a new app version configuration"""
+    version_id = str(uuid.uuid4())
+    query = """
+    INSERT INTO app_versions (id, app_type, platform, latest_version, minimum_supported_version, force_update, update_message)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """
+    execute_query(query, (
+        version_id, version.app_type.value, version.platform.value,
+        version.latest_version, version.minimum_supported_version,
+        1 if version.force_update else 0, version.update_message
+    ))
+    return await get_app_version(version_id)
+
+@router.put("/app-versions/{version_id}", response_model=AppVersionFullResponse, tags=["Mobile App Versioning"])
+async def update_app_version(version_id: str, version_update: AppVersionUpdate):
+    """Admin: Update an existing app version configuration"""
+    update_fields = []
+    values = []
+    
+    for field, value in version_update.dict(exclude_unset=True).items():
+        if value is not None:
+            update_fields.append(f"{field} = %s")
+            # Handle boolean to int conversion for MySQL
+            if field == "force_update":
+                values.append(1 if value else 0)
+            else:
+                values.append(value)
+                
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+        
+    values.append(version_id)
+    query = f"UPDATE app_versions SET {', '.join(update_fields)} WHERE id = %s"
+    
+    result = execute_query(query, tuple(values))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Version configuration not found")
+        
+    return await get_app_version(version_id)
+
+@router.delete("/app-versions/{version_id}", tags=["Mobile App Versioning"])
+async def delete_app_version(version_id: str):
+    """Admin: Delete an app version configuration"""
+    query = "DELETE FROM app_versions WHERE id = %s"
+    result = execute_query(query, (version_id,))
+    if result == 0:
+        raise HTTPException(status_code=404, detail="Version configuration not found")
+    return {"message": "Version configuration deleted successfully"}
 

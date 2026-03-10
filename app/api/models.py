@@ -697,3 +697,27 @@ class AppVersionCheckResponse(BaseModel):
     update_available: bool = False
     latest_version: Optional[str] = None
     message: Optional[str] = None
+
+# Admin Management Models for App Versioning
+class AppVersionBase(BaseModel):
+    app_type: AppType
+    platform: Platform
+    latest_version: str = Field(..., max_length=20)
+    minimum_supported_version: str = Field(..., max_length=20)
+    force_update: bool = False
+    update_message: Optional[str] = Field(None, max_length=255)
+
+class AppVersionCreate(AppVersionBase):
+    pass
+
+class AppVersionUpdate(BaseModel):
+    latest_version: Optional[str] = Field(None, max_length=20)
+    minimum_supported_version: Optional[str] = Field(None, max_length=20)
+    force_update: Optional[bool] = None
+    update_message: Optional[str] = Field(None, max_length=255)
+
+class AppVersionFullResponse(AppVersionBase):
+    id: str
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
