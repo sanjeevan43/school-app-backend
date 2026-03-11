@@ -155,22 +155,34 @@ class ProximityTrackingService:
 
     async def complete_trip(self, trip_id: str, route_id: str):
         """Manual Complete Trip Logic - updates DB status to COMPLETED"""
+        trip_type = "PICKUP" # Default
         try:
+            # Fetch trip details to get trip_type
+            trip_info = execute_query("SELECT trip_type FROM trips WHERE trip_id = %s", (trip_id,), fetch_one=True)
+            if trip_info:
+                trip_type = trip_info['trip_type']
+
             # Update trip status in DB
             execute_query(
                 "UPDATE trips SET status = 'COMPLETED', ended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s",
                 (trip_id,)
             )
-            logger.info(f"✅ Trip {trip_id} marked as COMPLETED in DB")
+            logger.info(f"✅ Trip {trip_id} ({trip_type}) marked as COMPLETED in DB")
         except Exception as e:
             logger.error(f"Failed to update trip status to COMPLETED: {e}")
 
-        tokens = await self.fetch_tokens_by_route(route_id)
-        if tokens:
-            await notification_service.broadcast_to_tokens(
-                tokens, "✅ Trip Completed", "Your bus has completed the trip", 
-                {"trip_id": trip_id, "route_id": route_id, "status": "COMPLETED"}
-            )
+        # Only send notification for PICKUP trips per user request
+        recipients_count = 0
+        if trip_type == "PICKUP":
+            tokens = await self.fetch_tokens_by_route(route_id)
+            if tokens:
+                await notification_service.broadcast_to_tokens(
+                    tokens, "✅ Trip Completed", "Your bus has completed the trip", 
+                    {"trip_id": trip_id, "route_id": route_id, "status": "COMPLETED"}
+                )
+                recipients_count = len(tokens)
+        else:
+            logger.info(f"⏭️ Skipping complete notification for {trip_type} trip")
         
         # Cleanup in-memory state
         if trip_id in self.active_trips:
@@ -178,7 +190,7 @@ class ProximityTrackingService:
         if trip_id in self.notified_stops:
             del self.notified_stops[trip_id]
             
-        return {"success": True, "recipients": len(tokens)}
+        return {"success": True, "recipients": recipients_count, "trip_type": trip_type}
 
 # Global instance
 proximity_service = ProximityTrackingService()
