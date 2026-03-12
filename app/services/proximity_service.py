@@ -148,7 +148,7 @@ class ProximityTrackingService:
         tokens = await self.fetch_tokens_by_route(route_id)
         if tokens:
             await notification_service.broadcast_to_tokens(
-                tokens, "🚌 Bus Started", "Your bus has started the trip", 
+                tokens, "🚌 Trip Started", "The bus has started its trip from the school.", 
                 {"trip_id": trip_id, "route_id": route_id, "status": "STARTED"}
             )
         return {"success": True, "recipients": len(tokens)}
@@ -177,7 +177,7 @@ class ProximityTrackingService:
             tokens = await self.fetch_tokens_by_route(route_id)
             if tokens:
                 await notification_service.broadcast_to_tokens(
-                    tokens, "✅ Trip Completed", "Your bus has completed the trip", 
+                    tokens, "✅ Trip Completed", "The bus has completed the trip.", 
                     {"trip_id": trip_id, "route_id": route_id, "status": "COMPLETED"}
                 )
                 recipients_count = len(tokens)

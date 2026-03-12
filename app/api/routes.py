@@ -371,10 +371,33 @@ async def get_notifications_by_parent(parent_id: str):
     return notifications or []
 
 @router.get("/admin-parent-notifications", response_model=List[AdminParentNotificationResponse], tags=["Admin Parent Notifications"])
-async def get_all_admin_parent_notifications(limit: int = 50, offset: int = 0):
-    """Retrieve all notification records sent by admins (paginated)"""
-    query = "SELECT * FROM admin_parent_notifications ORDER BY created_at DESC LIMIT %s OFFSET %s"
-    notifications = execute_query(query, (limit, offset), fetch_all=True)
+async def get_all_admin_parent_notifications(
+    limit: int = 50, 
+    offset: int = 0,
+    route_id: Optional[str] = None,
+    class_id: Optional[str] = None
+):
+    """Retrieve all notification records sent by admins with optional route/class filters"""
+    query = "SELECT n.* FROM admin_parent_notifications n"
+    params = []
+    conditions = []
+
+    if route_id or class_id:
+        query += " JOIN students s ON n.student_id = s.student_id"
+        if route_id:
+            conditions.append("(s.pickup_route_id = %s OR s.drop_route_id = %s)")
+            params.extend([route_id, route_id])
+        if class_id:
+            conditions.append("s.class_id = %s")
+            params.append(class_id)
+    
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    
+    query += " ORDER BY n.created_at DESC LIMIT %s OFFSET %s"
+    params.extend([limit, offset])
+    
+    notifications = execute_query(query, tuple(params), fetch_all=True)
     return notifications or []
 
 @router.get("/admin-parent-notifications/admin/{admin_id}", response_model=List[AdminParentNotificationResponse], tags=["Admin Parent Notifications"])
@@ -382,6 +405,30 @@ async def get_notifications_by_admin(admin_id: str):
     """Show all notifications a specific administrator has sent"""
     query = "SELECT * FROM admin_parent_notifications WHERE sent_by_admin_id = %s ORDER BY created_at DESC"
     notifications = execute_query(query, (admin_id,), fetch_all=True)
+    return notifications or []
+
+@router.get("/admin-parent-notifications/route/{route_id}", response_model=List[AdminParentNotificationResponse], tags=["Admin Parent Notifications"])
+async def get_notifications_by_route(route_id: str):
+    """Retrieve history for all students on a specific route"""
+    query = """
+    SELECT DISTINCT n.* FROM admin_parent_notifications n
+    JOIN students s ON n.student_id = s.student_id
+    WHERE s.pickup_route_id = %s OR s.drop_route_id = %s
+    ORDER BY n.created_at DESC
+    """
+    notifications = execute_query(query, (route_id, route_id), fetch_all=True)
+    return notifications or []
+
+@router.get("/admin-parent-notifications/class/{class_id}", response_model=List[AdminParentNotificationResponse], tags=["Admin Parent Notifications"])
+async def get_notifications_by_class(class_id: str):
+    """Retrieve history for all students in a specific class"""
+    query = """
+    SELECT DISTINCT n.* FROM admin_parent_notifications n
+    JOIN students s ON n.student_id = s.student_id
+    WHERE s.class_id = %s
+    ORDER BY n.created_at DESC
+    """
+    notifications = execute_query(query, (class_id,), fetch_all=True)
     return notifications or []
 
 @router.get("/admin-parent-notifications/{notification_id}", response_model=AdminParentNotificationResponse, tags=["Admin Parent Notifications"])

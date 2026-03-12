@@ -156,7 +156,7 @@ class BusTrackingService:
                         # Still stop-based for the very first ping
                         students = self.get_students_for_route_stop(trip['route_id'], 1, trip['trip_type'])
                         if students:
-                            await self._broadcast_helper(students, "🚌 Bus Upcoming", f"Your bus is approaching {first_stop['stop_name']}.", {"trip_id": trip_id, "stop_name": first_stop['stop_name'], "status": "UPCOMING"})
+                            await self._broadcast_helper(students, "🚌 Bus Nearby", f"The bus is approaching {first_stop['stop_name']}. Please be ready.", {"trip_id": trip_id, "stop_name": first_stop['stop_name'], "status": "UPCOMING"})
                         
                         execute_query("UPDATE trips SET is_first_stop_notified = 1 WHERE trip_id = %s", (trip_id,))
             
@@ -184,28 +184,28 @@ class BusTrackingService:
 
             if arrived_stop:
                 target_order = arrived_stop['stop_order']
-                logger.info(f"📍 Stop Reached: {arrived_stop['stop_name']} (Order {target_order})")
                 
-                # 1. Update Database (skips over previous stops automatically and updates stop_logs - Self-Healing)
-                new_stop_logs = {}
-                if 'stop_logs' in trip:
-                    try:
-                        import json
-                        current_logs = trip['stop_logs']
-                        if isinstance(current_logs, str):
-                            current_logs = json.loads(current_logs)
-                        
-                        if isinstance(current_logs, dict):
-                            # Mark intermediate missed stops
-                            for s in stops:
-                                if s['stop_order'] <= target_order:
-                                    s_id = s['stop_id']
-                                    if s_id not in current_logs:
-                                        current_logs[s_id] = datetime.now().isoformat()
-                            new_stop_logs = current_logs
-                    except Exception as json_err:
-                        logger.error(f"Error updating stop_logs JSON: {json_err}")
-                        new_stop_logs = None
+                # 0. Check if this stop was ALREADY reached to avoid double notifications
+                original_logs = {}
+                try:
+                    logs_raw = trip.get('stop_logs')
+                    if logs_raw:
+                        original_logs = json.loads(logs_raw) if isinstance(logs_raw, str) else logs_raw
+                except:
+                    original_logs = {}
+                
+                was_already_reached = arrived_stop['stop_id'] in original_logs
+                
+                logger.info(f"📍 Stop Reached: {arrived_stop['stop_name']} (Order {target_order}) | Already logged: {was_already_reached}")
+                
+                # 1. Update Database (skips over previous stops automatically and updates stop_logs)
+                new_stop_logs = original_logs.copy()
+                # Mark current and all intermediate missed stops as reached
+                for s in stops:
+                    if current_stop_order < s['stop_order'] <= target_order:
+                        s_id = s['stop_id']
+                        if s_id not in new_stop_logs:
+                            new_stop_logs[s_id] = datetime.now().isoformat()
 
                 update_query = """
                 UPDATE trips SET 
@@ -214,47 +214,43 @@ class BusTrackingService:
                     updated_at = CURRENT_TIMESTAMP 
                 WHERE trip_id = %s
                 """
-                execute_query(update_query, (target_order, json.dumps(new_stop_logs) if new_stop_logs else trip.get('stop_logs'), trip_id))
+                execute_query(update_query, (target_order, json.dumps(new_stop_logs), trip_id))
                 
                 stops_passed = target_order - current_stop_order
                 current_stop_order = target_order
                 current_stop_info = {"stop_name": arrived_stop['stop_name'], "stop_order": target_order}
 
-                # 2. Location-Based Sequential Notifications
-                # Find current location name
-                current_location_name = arrived_stop['location'] or arrived_stop['stop_name']
-                
-                # Only trigger notifications if we reached the FIRST stop of its location
-                is_first_of_loc = any(g['first_stop_id'] == arrived_stop['stop_id'] for g in location_groups)
-                
-                if is_first_of_loc:
-                    # Find index of current location group
-                    loc_idx = -1
-                    for i, group in enumerate(location_groups):
-                        if group['location_name'] == current_location_name:
-                            loc_idx = i
-                            break
+                # 2. Trigger Notifications ONLY if this is the FIRST time reaching this stop
+                if not was_already_reached:
+                    current_stop_name = arrived_stop['stop_name']
                     
-                    # A. Arrival Notification
-                    students_arrived = self.get_students_for_location(trip['route_id'], current_location_name, trip['trip_type'])
+                    # A. Arrival Notification (Current Stop)
+                    students_arrived = self.get_students_for_route_stop(trip['route_id'], target_order, trip['trip_type'])
                     if students_arrived:
-                        await self._broadcast_helper(students_arrived, "🚌 Bus Arrived", f"Your bus has arrived at {current_location_name}.", {"trip_id": trip_id, "location": current_location_name, "status": "ARRIVED"})
+                        title = "🚌 Bus Arrived"
+                        message = f"The bus has arrived at {current_stop_name}."
+                        await self._broadcast_helper(students_arrived, title, message, {"trip_id": trip_id, "stop_name": current_stop_name, "status": "ARRIVED"})
 
-                    # B. Approaching Next Location
-                    if loc_idx != -1 and loc_idx + 1 < len(location_groups):
-                        next_loc = location_groups[loc_idx + 1]
-                        students_approaching = self.get_students_for_location(trip['route_id'], next_loc['location_name'], trip['trip_type'])
+                    # B. Approaching Notification (Next Stop: N+1)
+                    next_stop = next((s for s in stops if s['stop_order'] == target_order + 1), None)
+                    if next_stop:
+                        students_approaching = self.get_students_for_route_stop(trip['route_id'], next_stop['stop_order'], trip['trip_type'])
                         if students_approaching:
-                            await self._broadcast_helper(students_approaching, "🚌 Bus Approaching", f"Your bus reached {current_location_name}", {"trip_id": trip_id, "location": next_loc['location_name'], "status": "APPROACHING"})
+                            next_stop_name = next_stop['stop_name']
+                            title = "🚌 Bus Approaching"
+                            message = f"The bus has reached {current_stop_name} and will arrive at {next_stop_name} soon."
+                            await self._broadcast_helper(students_approaching, title, message, {"trip_id": trip_id, "stop_name": next_stop_name, "status": "APPROACHING"})
 
-                    # C. Upcoming Locations (Next 4)
-                    if loc_idx != -1:
-                        for i in range(2, 6): # Next 4 groups (idx+2 to idx+5)
-                            if loc_idx + i < len(location_groups):
-                                upcoming_loc = location_groups[loc_idx + i]
-                                students_upcoming = self.get_students_for_location(trip['route_id'], upcoming_loc['location_name'], trip['trip_type'])
-                                if students_upcoming:
-                                    await self._broadcast_helper(students_upcoming, "🚌 Bus Upcoming", f"Your bus reached {current_location_name}.", {"trip_id": trip_id, "location": upcoming_loc['location_name'], "status": "UPCOMING"})
+                    # C. Nearby Notification (Future Stops: N+2 to N+5)
+                    for i in range(2, 6):
+                        future_stop = next((s for s in stops if s['stop_order'] == target_order + i), None)
+                        if future_stop:
+                            students_nearby = self.get_students_for_route_stop(trip['route_id'], future_stop['stop_order'], trip['trip_type'])
+                            if students_nearby:
+                                future_stop_name = future_stop['stop_name']
+                                title = "🚌 Bus Nearby"
+                                message = f"The bus is approaching {future_stop_name}. Please be ready."
+                                await self._broadcast_helper(students_nearby, title, message, {"trip_id": trip_id, "stop_name": future_stop_name, "status": "UPCOMING"})
 
             return {
                 "success": True,
@@ -365,31 +361,25 @@ class BusTrackingService:
             next_order = target_skip_order + 1
             students_N1 = self.get_students_for_route_stop(trip['route_id'], next_order, trip['trip_type'])
             if students_N1:
-                await self._broadcast_helper(students_N1, "🚌 Bus Approaching", f"Your bus passed {skipped_stop['stop_name']}", {"trip_id": trip_id, "stop_name": skipped_stop['stop_name'], "status": "APPROACHING"})
+                # Find stop name for N+1
+                next_stop = next((s for s in stops if s['stop_order'] == next_order), None)
+                next_stop_name = next_stop['stop_name'] if next_stop else f"Stop {next_order}"
+                
+                title = "🚌 Bus Approaching"
+                message = f"The bus has reached {skipped_stop['stop_name']} and will arrive at {next_stop_name} soon."
+                await self._broadcast_helper(students_N1, title, message, {"trip_id": trip_id, "stop_name": next_stop_name, "status": "APPROACHING"})
 
-            # B. Upcoming Notification for Stop N + 2
-            upcoming_order = target_skip_order + 2
-            students_N2 = self.get_students_for_route_stop(trip['route_id'], upcoming_order, trip['trip_type'])
-            if students_N2:
-                await self._broadcast_helper(students_N2, "🚌 Bus Upcoming", f"Your bus passed {skipped_stop['stop_name']}", {"trip_id": trip_id, "status": "UPCOMING"})
-
-            # C. Early Notification for Stop N + 3
-            upcoming_order_3 = target_skip_order + 3
-            students_N3 = self.get_students_for_route_stop(trip['route_id'], upcoming_order_3, trip['trip_type'])
-            if students_N3:
-                await self._broadcast_helper(students_N3, "🚌 Bus Upcoming", f"Your bus passed {skipped_stop['stop_name']}", {"trip_id": trip_id, "status": "UPCOMING"})
-
-            # D. Early Notification for Stop N + 4
-            upcoming_order_4 = target_skip_order + 4
-            students_N4 = self.get_students_for_route_stop(trip['route_id'], upcoming_order_4, trip['trip_type'])
-            if students_N4:
-                await self._broadcast_helper(students_N4, "🚌 Bus Upcoming", f"Your bus passed {skipped_stop['stop_name']}", {"trip_id": trip_id, "status": "UPCOMING"})
-
-            # E. Early Notification for Stop N + 5
-            upcoming_order_5 = target_skip_order + 5
-            students_N5 = self.get_students_for_route_stop(trip['route_id'], upcoming_order_5, trip['trip_type'])
-            if students_N5:
-                await self._broadcast_helper(students_N5, "🚌 Bus Upcoming", f"Your bus passed {skipped_stop['stop_name']}", {"trip_id": trip_id, "status": "UPCOMING"})
+            # B. Upcoming Notification for Stop N + 2 to N + 5
+            for i in range(2, 6):
+                future_order = target_skip_order + i
+                students_future = self.get_students_for_route_stop(trip['route_id'], future_order, trip['trip_type'])
+                if students_future:
+                    future_stop = next((s for s in stops if s['stop_order'] == future_order), None)
+                    future_stop_name = future_stop['stop_name'] if future_stop else f"Stop {future_order}"
+                    
+                    title = "🚌 Bus Nearby"
+                    message = f"The bus is approaching {future_stop_name}. Please be ready."
+                    await self._broadcast_helper(students_future, title, message, {"trip_id": trip_id, "status": "UPCOMING"})
 
             return {
                 "success": True, 
