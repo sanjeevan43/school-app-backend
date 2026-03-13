@@ -8,6 +8,10 @@ from app.core.security import verify_password
 from datetime import datetime
 import asyncio
 import os
+import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 

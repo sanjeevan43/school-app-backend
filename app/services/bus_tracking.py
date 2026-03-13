@@ -293,7 +293,7 @@ class BusTrackingService:
                                         (str(uuid.uuid4()), title, message, "LOCATION", trip['route_id'], future_stop['location'] or future_stop['stop_name'], "SYSTEM")
                                     )
                                 except: pass
-us": "UPCOMING"})
+
 
             return {
                 "success": True,
