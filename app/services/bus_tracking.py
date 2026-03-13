@@ -2,6 +2,7 @@ import logging
 import math
 import json
 import asyncio
+import uuid
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 from app.core.database import execute_query
@@ -168,7 +169,16 @@ class BusTrackingService:
                         # Still stop-based for the very first ping
                         students = self.get_students_for_route_stop(trip['route_id'], 1, trip['trip_type'])
                         if students:
-                            await self._broadcast_helper(students, "🚌 Bus Nearby", f"The bus is approaching {first_stop['stop_name']}. Please be ready.", {"trip_id": trip_id, "stop_name": first_stop['stop_name'], "status": "UPCOMING"})
+                            title = "🚌 Bus Nearby"
+                            body = f"The bus is approaching {first_stop['stop_name']}. Please be ready."
+                            await self._broadcast_helper(students, title, body, {"trip_id": trip_id, "stop_name": first_stop['stop_name'], "status": "UPCOMING"})
+                            # Log in history
+                            try:
+                                execute_query(
+                                    "INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, location_name, sent_by_admin_id) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                                    (str(uuid.uuid4()), title, body, "LOCATION", trip['route_id'], first_stop['location'] or first_stop['stop_name'], "SYSTEM")
+                                )
+                            except: pass
                         
                         execute_query("UPDATE trips SET is_first_stop_notified = 1 WHERE trip_id = %s", (trip_id,))
             
@@ -235,13 +245,19 @@ class BusTrackingService:
                 # 2. Trigger Notifications ONLY if this is the FIRST time reaching this stop
                 if not was_already_reached:
                     current_stop_name = arrived_stop['stop_name']
-                    
-                    # A. Arrival Notification (Current Stop)
+                                # A. Arrival Notification (Current Stop)
                     students_arrived = self.get_students_for_route_stop(trip['route_id'], target_order, trip['trip_type'])
                     if students_arrived:
                         title = "🚌 Bus Arrived"
                         message = f"The bus has arrived at {current_stop_name}."
                         await self._broadcast_helper(students_arrived, title, message, {"trip_id": trip_id, "stop_name": current_stop_name, "status": "ARRIVED"})
+                        # Log in history
+                        try:
+                            execute_query(
+                                "INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, location_name, sent_by_admin_id) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                                (str(uuid.uuid4()), title, message, "LOCATION", trip['route_id'], arrived_stop['location'] or arrived_stop['stop_name'], "SYSTEM")
+                            )
+                        except: pass
 
                     # B. Approaching Notification (Next Stop: N+1)
                     next_stop = next((s for s in stops if s['stop_order'] == target_order + 1), None)
@@ -252,6 +268,13 @@ class BusTrackingService:
                             title = "🚌 Bus Approaching"
                             message = f"The bus has reached {current_stop_name} and will arrive at {next_stop_name} soon."
                             await self._broadcast_helper(students_approaching, title, message, {"trip_id": trip_id, "stop_name": next_stop_name, "status": "APPROACHING"})
+                            # Log in history (Next stop location)
+                            try:
+                                execute_query(
+                                    "INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, location_name, sent_by_admin_id) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                                    (str(uuid.uuid4()), title, message, "LOCATION", trip['route_id'], next_stop['location'] or next_stop['stop_name'], "SYSTEM")
+                                )
+                            except: pass
 
                     # C. Nearby Notification (Future Stops: N+2 to N+5)
                     for i in range(2, 6):
@@ -263,6 +286,14 @@ class BusTrackingService:
                                 title = "🚌 Bus Nearby"
                                 message = f"The bus is approaching {future_stop_name}. Please be ready."
                                 await self._broadcast_helper(students_nearby, title, message, {"trip_id": trip_id, "stop_name": future_stop_name, "status": "UPCOMING"})
+                                # Log in history (Future stop location)
+                                try:
+                                    execute_query(
+                                        "INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, location_name, sent_by_admin_id) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                                        (str(uuid.uuid4()), title, message, "LOCATION", trip['route_id'], future_stop['location'] or future_stop['stop_name'], "SYSTEM")
+                                    )
+                                except: pass
+us": "UPCOMING"})
 
             return {
                 "success": True,

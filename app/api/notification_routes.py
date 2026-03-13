@@ -214,11 +214,22 @@ async def broadcast_parents(
     message_type: str = Body("audio", alias="messageType", description="Type of message (default: audio)"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
-    """Send a notification to all parents concurrently"""
+    """Send a notification to all parents concurrently (Saves to DB history first)"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
-    # Fetch all unique parent tokens from database for ACTIVE parents only
+    # 1. Log the broadcast in history FIRST
+    notification_id = str(uuid.uuid4())
+    try:
+        log_query = """
+        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, sent_by_admin_id)
+        VALUES (%s, %s, %s, 'ALL', %s)
+        """
+        execute_query(log_query, (notification_id, title, body, "SYSTEM_ADMIN"))
+    except Exception as log_err:
+        logger.warning(f"Failed to log broadcast notification: {log_err}")
+
+    # 2. Fetch all unique parent tokens from database for ACTIVE parents only
     query = """
     SELECT DISTINCT ft.fcm_token 
     FROM fcm_tokens ft
@@ -230,9 +241,9 @@ async def broadcast_parents(
     all_tokens = {t['fcm_token'] for t in tokens if t['fcm_token']}
     
     if not all_tokens:
-        return {"success": True, "delivered_count": 0, "total_found": 0, "message": "No active parent tokens found"}
+        return {"success": True, "delivered_count": 0, "total_found": 0, "message": "No active parent tokens found", "notification_id": notification_id}
 
-    # Send concurrently
+    # 3. Send concurrently
     tasks = [
         notification_service.send_to_device(title, body, t_val, recipient_type="parent", message_type=message_type)
         for t_val in all_tokens
@@ -241,21 +252,12 @@ async def broadcast_parents(
     
     success_count = sum(1 for r in results if r.get("success"))
     
-    # Log the broadcast in history
-    try:
-        log_query = """
-        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, sent_by_admin_id)
-        VALUES (%s, %s, %s, 'ALL', %s)
-        """
-        execute_query(log_query, (str(uuid.uuid4()), title, body, "SYSTEM_ADMIN"))
-    except Exception as log_err:
-        logger.warning(f"Failed to log broadcast notification: {log_err}")
-
     return {
         "success": True, 
         "delivered_count": success_count, 
         "total_tokens": len(all_tokens), 
-        "message": f"Broadcast sent to {success_count} parents"
+        "message": f"Broadcast sent to {success_count} parents",
+        "notification_id": notification_id
     }
 
 @router.post("/notifications/student/{student_id}", tags=["Notifications"])
@@ -266,13 +268,24 @@ async def send_student_notification(
     message_type: str = Body("audio"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
-    """Send a notification to all FCM tokens associated with a student"""
+    """Send a notification to all FCM tokens associated with a student (Saves to DB history first)"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
+    # 1. Log in history FIRST
+    notification_id = str(uuid.uuid4())
+    try:
+        log_query = """
+        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, student_id, sent_by_admin_id)
+        VALUES (%s, %s, %s, 'STUDENT', %s, %s)
+        """
+        execute_query(log_query, (notification_id, title, body, student_id, "SYSTEM_ADMIN"))
+    except Exception as log_err:
+        logger.warning(f"Failed to log student notification: {log_err}")
+
     tokens = execute_query("SELECT fcm_token FROM fcm_tokens WHERE student_id = %s", (student_id,), fetch_all=True)
     if not tokens:
-        raise HTTPException(status_code=404, detail="No FCM tokens found for this student")
+        return {"success": True, "message": "No tokens for student", "delivered_count": 0, "notification_id": notification_id}
     
     unique_tokens = {t['fcm_token'] for t in tokens if t['fcm_token']}
     tasks = [
@@ -282,18 +295,7 @@ async def send_student_notification(
     results = await asyncio.gather(*tasks)
     
     success_count = sum(1 for r in results if r.get("success"))
-    
-    # Log in history
-    try:
-        log_query = """
-        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, student_id, sent_by_admin_id)
-        VALUES (%s, %s, %s, 'STUDENT', %s, %s)
-        """
-        execute_query(log_query, (str(uuid.uuid4()), title, body, student_id, "SYSTEM_ADMIN"))
-    except Exception as log_err:
-        logger.warning(f"Failed to log student notification: {log_err}")
-
-    return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens)}
+    return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens), "notification_id": notification_id}
 
 @router.post("/notifications/parent/{parent_id}", tags=["Notifications"])
 async def send_parent_notification(
@@ -303,16 +305,24 @@ async def send_parent_notification(
     message_type: str = Body("audio"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
-    """Send a notification to all FCM tokens associated with a parent"""
+    """Send a notification to all FCM tokens associated with a parent (Saves to DB history first)"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
+    # 1. Log in history FIRST
+    notification_id = str(uuid.uuid4())
+    try:
+        log_query = """
+        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, recipient_id, sent_by_admin_id)
+        VALUES (%s, %s, %s, 'PARENT_DIRECT', %s, %s)
+        """
+        execute_query(log_query, (notification_id, title, body, parent_id, "SYSTEM_ADMIN"))
+    except Exception as log_err:
+        logger.warning(f"Failed to log parent notification: {log_err}")
+
     tokens = execute_query("SELECT fcm_token FROM fcm_tokens WHERE parent_id = %s", (parent_id,), fetch_all=True)
     if not tokens:
-        parent_check = execute_query("SELECT parent_id FROM parents WHERE parent_id = %s", (parent_id,), fetch_one=True)
-        if not parent_check:
-            raise HTTPException(status_code=404, detail="Parent not found")
-        return {"success": True, "message": "No FCM tokens found for this parent", "delivered_count": 0}
+        return {"success": True, "message": "No tokens for parent", "delivered_count": 0, "notification_id": notification_id}
     
     unique_tokens = {t['fcm_token'] for t in tokens if t['fcm_token']}
     tasks = [
@@ -322,18 +332,7 @@ async def send_parent_notification(
     results = await asyncio.gather(*tasks)
     
     success_count = sum(1 for r in results if r.get("success"))
-    
-    # Log in history
-    try:
-        log_query = """
-        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, sent_by_admin_id)
-        VALUES (%s, %s, %s, 'PARENT_DIRECT', %s)
-        """
-        execute_query(log_query, (str(uuid.uuid4()), title, body, "SYSTEM_ADMIN"))
-    except Exception as log_err:
-        logger.warning(f"Failed to log parent notification: {log_err}")
-
-    return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens)}
+    return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens), "notification_id": notification_id}
 
 @router.post("/notifications/route/{route_id}", tags=["Notifications"])
 async def send_route_notification(
@@ -343,10 +342,21 @@ async def send_route_notification(
     message_type: str = Body("audio"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
-    """Send a notification to everyone (parents/students) on a specific route"""
+    """Send a notification to everyone (parents/students) on a specific route (Saves to DB history first)"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
+    # 1. Log in history FIRST
+    notification_id = str(uuid.uuid4())
+    try:
+        log_query = """
+        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, sent_by_admin_id)
+        VALUES (%s, %s, %s, 'ROUTE', %s, %s)
+        """
+        execute_query(log_query, (notification_id, title, body, route_id, "SYSTEM_ADMIN"))
+    except Exception as log_err:
+        logger.warning(f"Failed to log route notification: {log_err}")
+
     query = """
     SELECT DISTINCT ft.fcm_token 
     FROM fcm_tokens ft
@@ -355,7 +365,7 @@ async def send_route_notification(
     """
     tokens = execute_query(query, (route_id, route_id), fetch_all=True)
     if not tokens:
-        raise HTTPException(status_code=404, detail="No FCM tokens found for this route")
+        return {"success": True, "message": "No tokens for route", "delivered_count": 0, "notification_id": notification_id}
     
     unique_tokens = {t['fcm_token'] for t in tokens if t['fcm_token']}
     tasks = [
@@ -365,18 +375,7 @@ async def send_route_notification(
     results = await asyncio.gather(*tasks)
     
     success_count = sum(1 for r in results if r.get("success"))
-    
-    # Log in history
-    try:
-        log_query = """
-        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, sent_by_admin_id)
-        VALUES (%s, %s, %s, 'ROUTE', %s, %s)
-        """
-        execute_query(log_query, (str(uuid.uuid4()), title, body, route_id, "SYSTEM_ADMIN"))
-    except Exception as log_err:
-        logger.warning(f"Failed to log route notification: {log_err}")
-
-    return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens)}
+    return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens), "notification_id": notification_id}
 
 @router.post("/notifications/class/{class_id}", tags=["Notifications"])
 async def send_class_notification(
@@ -386,10 +385,21 @@ async def send_class_notification(
     message_type: str = Body("audio"),
     x_admin_key: str = Header(..., alias="x-admin-key")
 ):
-    """Send a notification to everyone (parents/students) in a specific class"""
+    """Send a notification to everyone (parents/students) in a specific class (Saves to DB history first)"""
     if x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
+    # 1. Log in history FIRST
+    notification_id = str(uuid.uuid4())
+    try:
+        log_query = """
+        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, class_id, sent_by_admin_id)
+        VALUES (%s, %s, %s, 'CLASS', %s, %s)
+        """
+        execute_query(log_query, (notification_id, title, body, class_id, "SYSTEM_ADMIN"))
+    except Exception as log_err:
+        logger.warning(f"Failed to log class notification: {log_err}")
+
     query = """
     SELECT DISTINCT ft.fcm_token 
     FROM fcm_tokens ft
@@ -398,7 +408,7 @@ async def send_class_notification(
     """
     tokens = execute_query(query, (class_id,), fetch_all=True)
     if not tokens:
-        raise HTTPException(status_code=404, detail="No FCM tokens found for this class")
+        return {"success": True, "message": "No tokens for class", "delivered_count": 0, "notification_id": notification_id}
     
     unique_tokens = {t['fcm_token'] for t in tokens if t['fcm_token']}
     tasks = [
@@ -408,18 +418,64 @@ async def send_class_notification(
     results = await asyncio.gather(*tasks)
     
     success_count = sum(1 for r in results if r.get("success"))
+    return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens), "notification_id": notification_id}
+
+@router.post("/notifications/location/{location_name}", tags=["Notifications"])
+async def send_location_notification(
+    location_name: str,
+    title: str = Body(...),
+    body: str = Body(...),
+    route_id: Optional[str] = Body(None),
+    message_type: str = Body("audio"),
+    x_admin_key: str = Header(..., alias="x-admin-key")
+):
+    """Send a notification to everyone (parents/students) at a specific location name (Saves to DB history first)"""
+    if x_admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
     
-    # Log in history
+    # 1. Log in history FIRST
+    notification_id = str(uuid.uuid4())
     try:
         log_query = """
-        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, class_id, sent_by_admin_id)
-        VALUES (%s, %s, %s, 'CLASS', %s, %s)
+        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, location_name, route_id, sent_by_admin_id)
+        VALUES (%s, %s, %s, 'LOCATION', %s, %s, %s)
         """
-        execute_query(log_query, (str(uuid.uuid4()), title, body, class_id, "SYSTEM_ADMIN"))
+        execute_query(log_query, (notification_id, title, body, location_name, route_id, "SYSTEM_ADMIN"))
     except Exception as log_err:
-        logger.warning(f"Failed to log class notification: {log_err}")
+        logger.warning(f"Failed to log location notification: {log_err}")
 
-    return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens)}
+    if route_id:
+        query = """
+        SELECT DISTINCT ft.fcm_token 
+        FROM fcm_tokens ft
+        JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
+        JOIN route_stops rs ON (s.pickup_stop_id = rs.stop_id OR s.drop_stop_id = rs.stop_id)
+        WHERE (s.pickup_route_id = %s OR s.drop_route_id = %s) AND rs.location = %s
+        """
+        params = (route_id, route_id, location_name)
+    else:
+        query = """
+        SELECT DISTINCT ft.fcm_token 
+        FROM fcm_tokens ft
+        JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
+        JOIN route_stops rs ON (s.pickup_stop_id = rs.stop_id OR s.drop_stop_id = rs.stop_id)
+        WHERE rs.location = %s
+        """
+        params = (location_name,)
+
+    tokens = execute_query(query, params, fetch_all=True)
+    if not tokens:
+        return {"success": True, "message": "No tokens for location", "delivered_count": 0, "notification_id": notification_id}
+    
+    unique_tokens = {t['fcm_token'] for t in tokens if t['fcm_token']}
+    tasks = [
+        notification_service.send_to_device(title, body, t_val, recipient_type="location", message_type=message_type)
+        for t_val in unique_tokens
+    ]
+    results = await asyncio.gather(*tasks)
+    
+    success_count = sum(1 for r in results if r.get("success"))
+    return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens), "notification_id": notification_id}
 
 from app.services.proximity_service import proximity_service
 from app.services.bus_tracking import bus_tracking_service

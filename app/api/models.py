@@ -674,10 +674,12 @@ class PasswordUpdate(BaseModel):
 class AdminParentNotificationBase(BaseModel):
     title: str = Field(..., max_length=150)
     message: str
-    recipient_type: str = "STUDENT" # STUDENT, ROUTE, CLASS, ALL
+    recipient_type: str = "STUDENT" # STUDENT, ROUTE, CLASS, ALL, LOCATION, PARENT_DIRECT
     student_id: Optional[str] = None
     route_id: Optional[str] = None
     class_id: Optional[str] = None
+    location_name: Optional[str] = None
+    recipient_id: Optional[str] = None
     sent_by_admin_id: str
 
 class AdminParentNotificationCreate(AdminParentNotificationBase):

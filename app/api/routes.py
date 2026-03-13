@@ -342,12 +342,14 @@ async def create_admin_parent_notification(notification: AdminParentNotification
         
         # 1. Save record to DB
         query = """
-        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, student_id, route_id, class_id, sent_by_admin_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, student_id, route_id, class_id, location_name, recipient_id, sent_by_admin_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         execute_query(query, (notification_id, notification.title, notification.message, 
                              notification.recipient_type, notification.student_id, 
-                             notification.route_id, notification.class_id, notification.sent_by_admin_id))
+                             notification.route_id, notification.class_id, 
+                             notification.location_name, notification.recipient_id,
+                             notification.sent_by_admin_id))
         
         # 2. Trigger actual FCM send
         from app.notification_api.service import notification_service
@@ -386,6 +388,30 @@ async def create_admin_parent_notification(notification: AdminParentNotification
             token_results = execute_query(query_tokens, (notification.class_id,), fetch_all=True)
             target_tokens = [t['fcm_token'] for t in token_results]
 
+        elif notification.recipient_type == "LOCATION" and notification.location_name:
+            # Send to all parents at this location name on a specific route
+            if notification.route_id:
+                query_tokens = """
+                SELECT DISTINCT ft.fcm_token 
+                FROM fcm_tokens ft
+                JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
+                JOIN route_stops rs ON (s.pickup_stop_id = rs.stop_id OR s.drop_stop_id = rs.stop_id)
+                WHERE (s.pickup_route_id = %s OR s.drop_route_id = %s) 
+                AND rs.location = %s AND ft.fcm_token IS NOT NULL
+                """
+                token_results = execute_query(query_tokens, (notification.route_id, notification.route_id, notification.location_name), fetch_all=True)
+            else:
+                # Global location name search (across all routes)
+                query_tokens = """
+                SELECT DISTINCT ft.fcm_token 
+                FROM fcm_tokens ft
+                JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
+                JOIN route_stops rs ON (s.pickup_stop_id = rs.stop_id OR s.drop_stop_id = rs.stop_id)
+                WHERE rs.location = %s AND ft.fcm_token IS NOT NULL
+                """
+                token_results = execute_query(query_tokens, (notification.location_name,), fetch_all=True)
+            target_tokens = [t['fcm_token'] for t in token_results]
+
         elif notification.recipient_type == "ALL":
             # Send to ALL active parents
             query_tokens = """
@@ -422,14 +448,26 @@ async def get_notifications_by_student(student_id: str):
 
 @router.get("/admin-parent-notifications/parent/{parent_id}", response_model=List[AdminParentNotificationResponse], tags=["Admin Parent Notifications"])
 async def get_notifications_by_parent(parent_id: str):
-    """Retrieve history for all students belonging to a specific parent"""
+    """Retrieve history for all notifications relevant to a specific parent (Direct, ALL, Route-based, Class-based, or Location-based)"""
     query = """
-    SELECT n.* FROM admin_parent_notifications n
-    JOIN students s ON n.student_id = s.student_id
-    WHERE s.parent_id = %s OR s.s_parent_id = %s
+    SELECT DISTINCT n.* FROM admin_parent_notifications n
+    LEFT JOIN students s ON (
+        (n.recipient_type = 'STUDENT' AND n.student_id = s.student_id) OR
+        (n.recipient_type = 'ROUTE' AND (n.route_id = s.pickup_route_id OR n.route_id = s.drop_route_id)) OR
+        (n.recipient_type = 'CLASS' AND n.class_id = s.class_id) OR
+        (n.recipient_type = 'LOCATION' AND EXISTS (
+            SELECT 1 FROM route_stops rs 
+            WHERE rs.location = n.location_name 
+            AND (rs.stop_id = s.pickup_stop_id OR rs.stop_id = s.drop_stop_id)
+        ))
+    )
+    WHERE n.recipient_type = 'ALL' 
+       OR n.recipient_type = 'PARENT_DIRECT' AND n.recipient_id = %s
+       OR s.parent_id = %s 
+       OR s.s_parent_id = %s
     ORDER BY n.created_at DESC
     """
-    notifications = execute_query(query, (parent_id, parent_id), fetch_all=True)
+    notifications = execute_query(query, (parent_id, parent_id, parent_id), fetch_all=True)
     return notifications or []
 
 @router.get("/admin-parent-notifications", response_model=List[AdminParentNotificationResponse], tags=["Admin Parent Notifications"])

@@ -2,6 +2,7 @@ import logging
 import asyncio
 import os
 import httpx
+import uuid
 from typing import Dict, Any, List, Set, Optional
 from geopy.distance import distance as geodesic
 from app.notification_api.service import notification_service
@@ -147,10 +148,19 @@ class ProximityTrackingService:
 
         tokens = await self.fetch_tokens_by_route(route_id)
         if tokens:
+            title = "🚌 Trip Started"
+            body = "The bus has started its trip from the school."
             await notification_service.broadcast_to_tokens(
-                tokens, "🚌 Trip Started", "The bus has started its trip from the school.", 
+                tokens, title, body, 
                 {"trip_id": trip_id, "route_id": route_id, "status": "STARTED"}
             )
+            # Log in history
+            try:
+                execute_query(
+                    "INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, sent_by_admin_id) VALUES (%s, %s, %s, %s, %s, %s)",
+                    (str(uuid.uuid4()), title, body, "ROUTE", route_id, "SYSTEM")
+                )
+            except: pass
         return {"success": True, "recipients": len(tokens)}
 
     async def complete_trip(self, trip_id: str, route_id: str):
@@ -176,11 +186,20 @@ class ProximityTrackingService:
         if trip_type == "PICKUP":
             tokens = await self.fetch_tokens_by_route(route_id)
             if tokens:
+                title = "✅ Trip Completed"
+                body = "The bus has completed the trip."
                 await notification_service.broadcast_to_tokens(
-                    tokens, "✅ Trip Completed", "The bus has completed the trip.", 
+                    tokens, title, body, 
                     {"trip_id": trip_id, "route_id": route_id, "status": "COMPLETED"}
                 )
                 recipients_count = len(tokens)
+                # Log in history
+                try:
+                    execute_query(
+                        "INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, sent_by_admin_id) VALUES (%s, %s, %s, %s, %s, %s)",
+                        (str(uuid.uuid4()), title, body, "ROUTE", route_id, "SYSTEM")
+                    )
+                except: pass
         else:
             logger.info(f"⏭️ Skipping complete notification for {trip_type} trip")
         
