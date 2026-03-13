@@ -336,16 +336,78 @@ async def reset_admin_default_password(admin_id: str):
 
 @router.post("/admin-parent-notifications", response_model=AdminParentNotificationResponse, tags=["Admin Parent Notifications"])
 async def create_admin_parent_notification(notification: AdminParentNotificationCreate):
-    """Save a record of a notification sent by an admin to parents/students"""
+    """Save a record of a notification sent by an admin to parents/students AND trigger FCM broadcast"""
     try:
         notification_id = str(uuid.uuid4())
+        
+        # 1. Save record to DB
         query = """
-        INSERT INTO admin_parent_notifications (notification_id, title, message, student_id, sent_by_admin_id)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, student_id, route_id, class_id, sent_by_admin_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
         execute_query(query, (notification_id, notification.title, notification.message, 
-                             notification.student_id, notification.sent_by_admin_id))
+                             notification.recipient_type, notification.student_id, 
+                             notification.route_id, notification.class_id, notification.sent_by_admin_id))
         
+        # 2. Trigger actual FCM send
+        from app.notification_api.service import notification_service
+        
+        target_tokens = []
+        if notification.recipient_type == "STUDENT" and notification.student_id:
+            # Send to parents of this specific student
+            query_tokens = """
+            SELECT ft.fcm_token 
+            FROM fcm_tokens ft
+            JOIN students s ON (ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
+            WHERE s.student_id = %s AND ft.fcm_token IS NOT NULL
+            """
+            token_results = execute_query(query_tokens, (notification.student_id,), fetch_all=True)
+            target_tokens = [t['fcm_token'] for t in token_results]
+        
+        elif notification.recipient_type == "ROUTE" and notification.route_id:
+            # Send to all parents on this route
+            query_tokens = """
+            SELECT DISTINCT ft.fcm_token 
+            FROM fcm_tokens ft
+            JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
+            WHERE (s.pickup_route_id = %s OR s.drop_route_id = %s) AND ft.fcm_token IS NOT NULL
+            """
+            token_results = execute_query(query_tokens, (notification.route_id, notification.route_id), fetch_all=True)
+            target_tokens = [t['fcm_token'] for t in token_results]
+
+        elif notification.recipient_type == "CLASS" and notification.class_id:
+            # Send to all parents in this class
+            query_tokens = """
+            SELECT DISTINCT ft.fcm_token 
+            FROM fcm_tokens ft
+            JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
+            WHERE s.class_id = %s AND ft.fcm_token IS NOT NULL
+            """
+            token_results = execute_query(query_tokens, (notification.class_id,), fetch_all=True)
+            target_tokens = [t['fcm_token'] for t in token_results]
+
+        elif notification.recipient_type == "ALL":
+            # Send to ALL active parents
+            query_tokens = """
+            SELECT DISTINCT ft.fcm_token 
+            FROM fcm_tokens ft
+            JOIN parents p ON ft.parent_id = p.parent_id
+            WHERE p.parents_active_status = 'ACTIVE' AND ft.fcm_token IS NOT NULL
+            """
+            token_results = execute_query(query_tokens, fetch_all=True)
+            target_tokens = [t['fcm_token'] for t in token_results]
+
+        if target_tokens:
+            # Send concurrently to all tokens
+            tasks = [
+                notification_service.send_to_device(
+                    notification.title, notification.message, token, 
+                    recipient_type="parent", message_type="audio"
+                )
+                for token in set(target_tokens)
+            ]
+            await asyncio.gather(*tasks)
+            
         return await get_admin_parent_notification(notification_id)
     except Exception as e:
         logger.error(f"Create admin parent notification error: {e}")
@@ -383,13 +445,13 @@ async def get_all_admin_parent_notifications(
     conditions = []
 
     if route_id or class_id:
-        query += " JOIN students s ON n.student_id = s.student_id"
+        # Check both direct association and join via students
         if route_id:
-            conditions.append("(s.pickup_route_id = %s OR s.drop_route_id = %s)")
-            params.extend([route_id, route_id])
+            conditions.append("(n.route_id = %s OR n.notification_id IN (SELECT n2.notification_id FROM admin_parent_notifications n2 JOIN students s ON n2.student_id = s.student_id WHERE s.pickup_route_id = %s OR s.drop_route_id = %s))")
+            params.extend([route_id, route_id, route_id])
         if class_id:
-            conditions.append("s.class_id = %s")
-            params.append(class_id)
+            conditions.append("(n.class_id = %s OR n.notification_id IN (SELECT n2.notification_id FROM admin_parent_notifications n2 JOIN students s ON n2.student_id = s.student_id WHERE s.class_id = %s))")
+            params.extend([class_id, class_id])
     
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
@@ -409,26 +471,26 @@ async def get_notifications_by_admin(admin_id: str):
 
 @router.get("/admin-parent-notifications/route/{route_id}", response_model=List[AdminParentNotificationResponse], tags=["Admin Parent Notifications"])
 async def get_notifications_by_route(route_id: str):
-    """Retrieve history for all students on a specific route"""
+    """Retrieve history for all notifications sent to a specific route (direct or via students)"""
     query = """
     SELECT DISTINCT n.* FROM admin_parent_notifications n
-    JOIN students s ON n.student_id = s.student_id
-    WHERE s.pickup_route_id = %s OR s.drop_route_id = %s
+    LEFT JOIN students s ON n.student_id = s.student_id
+    WHERE n.route_id = %s OR s.pickup_route_id = %s OR s.drop_route_id = %s
     ORDER BY n.created_at DESC
     """
-    notifications = execute_query(query, (route_id, route_id), fetch_all=True)
+    notifications = execute_query(query, (route_id, route_id, route_id), fetch_all=True)
     return notifications or []
 
 @router.get("/admin-parent-notifications/class/{class_id}", response_model=List[AdminParentNotificationResponse], tags=["Admin Parent Notifications"])
 async def get_notifications_by_class(class_id: str):
-    """Retrieve history for all students in a specific class"""
+    """Retrieve history for all notifications sent to a specific class (direct or via students)"""
     query = """
     SELECT DISTINCT n.* FROM admin_parent_notifications n
-    JOIN students s ON n.student_id = s.student_id
-    WHERE s.class_id = %s
+    LEFT JOIN students s ON n.student_id = s.student_id
+    WHERE n.class_id = %s OR s.class_id = %s
     ORDER BY n.created_at DESC
     """
-    notifications = execute_query(query, (class_id,), fetch_all=True)
+    notifications = execute_query(query, (class_id, class_id), fetch_all=True)
     return notifications or []
 
 @router.get("/admin-parent-notifications/{notification_id}", response_model=AdminParentNotificationResponse, tags=["Admin Parent Notifications"])

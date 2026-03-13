@@ -240,6 +240,17 @@ async def broadcast_parents(
     results = await asyncio.gather(*tasks)
     
     success_count = sum(1 for r in results if r.get("success"))
+    
+    # Log the broadcast in history
+    try:
+        log_query = """
+        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, sent_by_admin_id)
+        VALUES (%s, %s, %s, 'ALL', %s)
+        """
+        execute_query(log_query, (str(uuid.uuid4()), title, body, "SYSTEM_ADMIN"))
+    except Exception as log_err:
+        logger.warning(f"Failed to log broadcast notification: {log_err}")
+
     return {
         "success": True, 
         "delivered_count": success_count, 
@@ -271,6 +282,17 @@ async def send_student_notification(
     results = await asyncio.gather(*tasks)
     
     success_count = sum(1 for r in results if r.get("success"))
+    
+    # Log in history
+    try:
+        log_query = """
+        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, student_id, sent_by_admin_id)
+        VALUES (%s, %s, %s, 'STUDENT', %s, %s)
+        """
+        execute_query(log_query, (str(uuid.uuid4()), title, body, student_id, "SYSTEM_ADMIN"))
+    except Exception as log_err:
+        logger.warning(f"Failed to log student notification: {log_err}")
+
     return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens)}
 
 @router.post("/notifications/parent/{parent_id}", tags=["Notifications"])
@@ -300,6 +322,17 @@ async def send_parent_notification(
     results = await asyncio.gather(*tasks)
     
     success_count = sum(1 for r in results if r.get("success"))
+    
+    # Log in history
+    try:
+        log_query = """
+        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, sent_by_admin_id)
+        VALUES (%s, %s, %s, 'PARENT_DIRECT', %s)
+        """
+        execute_query(log_query, (str(uuid.uuid4()), title, body, "SYSTEM_ADMIN"))
+    except Exception as log_err:
+        logger.warning(f"Failed to log parent notification: {log_err}")
+
     return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens)}
 
 @router.post("/notifications/route/{route_id}", tags=["Notifications"])
@@ -332,6 +365,17 @@ async def send_route_notification(
     results = await asyncio.gather(*tasks)
     
     success_count = sum(1 for r in results if r.get("success"))
+    
+    # Log in history
+    try:
+        log_query = """
+        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, sent_by_admin_id)
+        VALUES (%s, %s, %s, 'ROUTE', %s, %s)
+        """
+        execute_query(log_query, (str(uuid.uuid4()), title, body, route_id, "SYSTEM_ADMIN"))
+    except Exception as log_err:
+        logger.warning(f"Failed to log route notification: {log_err}")
+
     return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens)}
 
 @router.post("/notifications/class/{class_id}", tags=["Notifications"])
@@ -364,6 +408,17 @@ async def send_class_notification(
     results = await asyncio.gather(*tasks)
     
     success_count = sum(1 for r in results if r.get("success"))
+    
+    # Log in history
+    try:
+        log_query = """
+        INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, class_id, sent_by_admin_id)
+        VALUES (%s, %s, %s, 'CLASS', %s, %s)
+        """
+        execute_query(log_query, (str(uuid.uuid4()), title, body, class_id, "SYSTEM_ADMIN"))
+    except Exception as log_err:
+        logger.warning(f"Failed to log class notification: {log_err}")
+
     return {"success": True, "delivered_count": success_count, "total_tokens": len(unique_tokens)}
 
 from app.services.proximity_service import proximity_service
