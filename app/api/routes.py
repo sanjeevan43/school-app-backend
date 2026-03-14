@@ -3338,7 +3338,7 @@ async def start_trip(trip_id: str):
                         body=f"The bus has started! It is on the way to your stop ({first_stop_students[0]['stop_name']}).",
                         token=token,
                         recipient_type="parent",
-                        message_type="trip_started"
+                        message_type="audio"
                     )
                     for token in set(parent_tokens)
                 ]

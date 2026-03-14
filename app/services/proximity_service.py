@@ -153,7 +153,7 @@ class ProximityTrackingService:
             await notification_service.broadcast_to_tokens(
                 tokens, title, body, 
                 {"trip_id": trip_id, "route_id": route_id, "status": "STARTED"},
-                message_type="text"
+                message_type="audio"
             )
             # Log in history
             try:
@@ -192,7 +192,7 @@ class ProximityTrackingService:
                 await notification_service.broadcast_to_tokens(
                     tokens, title, body, 
                     {"trip_id": trip_id, "route_id": route_id, "status": "COMPLETED"},
-                    message_type="text"
+                    message_type="audio"
                 )
                 recipients_count = len(tokens)
                 # Log in history
