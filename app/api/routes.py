@@ -7,6 +7,8 @@ import logging
 import json
 import re
 import asyncio
+import csv
+import io
 
 from app.core.database import get_db, execute_query
 from app.api.models import *
@@ -350,104 +352,116 @@ async def create_admin_parent_notification(notification: AdminParentNotification
     try:
         notification_id = str(uuid.uuid4())
         
+        # Sanitize optional ID fields: convert empty strings to None for DB foreign keys
+        def sanitize_id(id_val):
+            if id_val is None: return None
+            s = str(id_val).strip()
+            if s == "" or s.lower() in ["none", "null", "undefined"]: return None
+            return s
+
+        student_id = sanitize_id(notification.student_id)
+        route_id = sanitize_id(notification.route_id)
+        class_id = sanitize_id(notification.class_id)
+        recipient_id = sanitize_id(notification.recipient_id)
+        location_name = sanitize_id(notification.location_name)
+        
         # 1. Save record to DB
         query = """
         INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, student_id, route_id, class_id, location_name, recipient_id, sent_by_admin_id)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         execute_query(query, (notification_id, notification.title, notification.message, 
-                             notification.recipient_type, notification.student_id, 
-                             notification.route_id, notification.class_id, 
-                             notification.location_name, notification.recipient_id,
+                             notification.recipient_type, student_id, 
+                             route_id, class_id, 
+                             location_name, recipient_id,
                              notification.sent_by_admin_id))
         
-        # 2. Trigger actual FCM send
-        from app.notification_api.service import notification_service
-        
+        # 2. Setup FCM broadcast based on recipient type
         target_tokens = []
-        if notification.recipient_type == "STUDENT" and notification.student_id:
-            # Send to parents of this specific student
+        
+        if notification.recipient_type == "STUDENT" and student_id:
+            # Get tokens for a specific student's parents
             query_tokens = """
-            SELECT ft.fcm_token 
+            SELECT DISTINCT ft.fcm_token 
             FROM fcm_tokens ft
             JOIN students s ON (ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
             WHERE s.student_id = %s AND ft.fcm_token IS NOT NULL
             """
-            token_results = execute_query(query_tokens, (notification.student_id,), fetch_all=True)
+            token_results = execute_query(query_tokens, (student_id,), fetch_all=True)
             target_tokens = [t['fcm_token'] for t in token_results]
-        
-        elif notification.recipient_type == "ROUTE" and notification.route_id:
-            # Send to all parents on this route
+            
+        elif notification.recipient_type == "ROUTE" and route_id:
+            # Send to everyone on a specific route
             query_tokens = """
             SELECT DISTINCT ft.fcm_token 
             FROM fcm_tokens ft
             JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
             WHERE (s.pickup_route_id = %s OR s.drop_route_id = %s) AND ft.fcm_token IS NOT NULL
             """
-            token_results = execute_query(query_tokens, (notification.route_id, notification.route_id), fetch_all=True)
+            token_results = execute_query(query_tokens, (route_id, route_id), fetch_all=True)
             target_tokens = [t['fcm_token'] for t in token_results]
-
-        elif notification.recipient_type == "CLASS" and notification.class_id:
-            # Send to all parents in this class
+            
+        elif notification.recipient_type == "CLASS" and class_id:
+            # Send to everyone in a specific class
             query_tokens = """
             SELECT DISTINCT ft.fcm_token 
             FROM fcm_tokens ft
             JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
             WHERE s.class_id = %s AND ft.fcm_token IS NOT NULL
             """
-            token_results = execute_query(query_tokens, (notification.class_id,), fetch_all=True)
+            token_results = execute_query(query_tokens, (class_id,), fetch_all=True)
             target_tokens = [t['fcm_token'] for t in token_results]
-
-        elif notification.recipient_type == "LOCATION" and notification.location_name:
-            # Send to all parents at this location name on a specific route
-            if notification.route_id:
-                query_tokens = """
-                SELECT DISTINCT ft.fcm_token 
-                FROM fcm_tokens ft
-                JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
-                JOIN route_stops rs ON (s.pickup_stop_id = rs.stop_id OR s.drop_stop_id = rs.stop_id)
-                WHERE (s.pickup_route_id = %s OR s.drop_route_id = %s) 
-                AND rs.location = %s AND ft.fcm_token IS NOT NULL
-                """
-                token_results = execute_query(query_tokens, (notification.route_id, notification.route_id, notification.location_name), fetch_all=True)
-            else:
-                # Global location name search (across all routes)
-                query_tokens = """
-                SELECT DISTINCT ft.fcm_token 
-                FROM fcm_tokens ft
-                JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
-                JOIN route_stops rs ON (s.pickup_stop_id = rs.stop_id OR s.drop_stop_id = rs.stop_id)
-                WHERE rs.location = %s AND ft.fcm_token IS NOT NULL
-                """
-                token_results = execute_query(query_tokens, (notification.location_name,), fetch_all=True)
+            
+        elif notification.recipient_type == "LOCATION" and location_name:
+            # Send to all parents at this location name on a specific route (if provided)
+            params = [location_name]
+            route_filter = ""
+            if route_id:
+                route_filter = "AND (s.pickup_route_id = %s OR s.drop_route_id = %s)"
+                params = [route_id, route_id, location_name]
+                
+            query_tokens = f"""
+            SELECT DISTINCT ft.fcm_token 
+            FROM fcm_tokens ft
+            JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
+            JOIN route_stops rs ON (s.pickup_stop_id = rs.stop_id OR s.drop_stop_id = rs.stop_id)
+            WHERE rs.location = %s {route_filter} AND ft.fcm_token IS NOT NULL
+            """
+            token_results = execute_query(query_tokens, tuple(params), fetch_all=True)
+            target_tokens = [t['fcm_token'] for t in token_results]
+            
+        elif notification.recipient_type == "PARENT_DIRECT" and recipient_id:
+            # Send to a specific parent directly
+            query_tokens = "SELECT fcm_token FROM fcm_tokens WHERE parent_id = %s AND fcm_token IS NOT NULL"
+            token_results = execute_query(query_tokens, (recipient_id,), fetch_all=True)
             target_tokens = [t['fcm_token'] for t in token_results]
 
         elif notification.recipient_type == "ALL":
-            # Send to ALL active parents
-            query_tokens = """
-            SELECT DISTINCT ft.fcm_token 
-            FROM fcm_tokens ft
-            JOIN parents p ON ft.parent_id = p.parent_id
-            WHERE p.parents_active_status = 'ACTIVE' AND ft.fcm_token IS NOT NULL
-            """
+            # Send to all unique parent tokens
+            query_tokens = "SELECT DISTINCT fcm_token FROM fcm_tokens WHERE parent_id IS NOT NULL AND fcm_token IS NOT NULL"
             token_results = execute_query(query_tokens, fetch_all=True)
             target_tokens = [t['fcm_token'] for t in token_results]
-
+            
+        # Trigger FCM broadcast asynchronously
         if target_tokens:
-            # Send concurrently to all tokens
+            unique_tokens = list(set(target_tokens))
+            from app.notification_api.service import notification_service
             tasks = [
                 notification_service.send_to_device(
                     notification.title, notification.message, token, 
                     recipient_type="parent", message_type="audio"
                 )
-                for token in set(target_tokens)
+                for token in unique_tokens
             ]
-            await asyncio.gather(*tasks)
-            
+            await asyncio.gather(*tasks, return_exceptions=True)
+        
         return await get_admin_parent_notification(notification_id)
     except Exception as e:
-        logger.error(f"Create admin parent notification error: {e}")
-        raise HTTPException(status_code=400, detail=f"Failed to create notification record: {str(e)}")
+        logger.error(f"Create admin notification error: {e}")
+        error_msg = str(e).lower()
+        if "foreign key constraint" in error_msg:
+            raise HTTPException(status_code=400, detail="Invalid ID provided: Admin/Student/Parent ID not found in database.")
+        raise HTTPException(status_code=500, detail=f"Failed to record/send notification: {str(e)}")
 
 @router.get("/admin-parent-notifications/student/{student_id}", response_model=List[AdminParentNotificationResponse], tags=["Admin Parent Notifications"])
 async def get_notifications_by_student(student_id: str):
@@ -541,14 +555,6 @@ async def get_notifications_by_class(class_id: str):
     notifications = execute_query(query, (class_id, class_id), fetch_all=True)
     return notifications or []
 
-@router.get("/admin-parent-notifications/{notification_id}", response_model=AdminParentNotificationResponse, tags=["Admin Parent Notifications"])
-async def get_admin_parent_notification(notification_id: str):
-    """Get details of a single notification record"""
-    query = "SELECT * FROM admin_parent_notifications WHERE notification_id = %s"
-    notification = execute_query(query, (notification_id,), fetch_one=True)
-    if not notification:
-        raise HTTPException(status_code=404, detail="Notification record not found")
-    return notification
 
 # =====================================================
 # PARENT ENDPOINTS
@@ -841,16 +847,17 @@ async def patch_parent_fcm_token(parent_id: str, fcm_data: dict):
 
 @router.get("/parents/fcm-tokens/all", tags=["Parents"])
 async def get_all_parent_fcm_tokens():
-    """GET: Retrieve all unique parent FCM tokens (flat list)"""
+    """GET: Retrieve all unique parent FCM tokens with fcm_id"""
     query = """
-    SELECT DISTINCT f.fcm_token 
+    SELECT f.fcm_id, f.fcm_token 
     FROM parents p
     INNER JOIN fcm_tokens f ON p.parent_id = f.parent_id
     WHERE f.fcm_token IS NOT NULL AND p.parents_active_status = 'ACTIVE'
     """
     token_results = execute_query(query, fetch_all=True)
-    # Use set comprehension to ensure uniqueness and then convert back to list
-    fcm_tokens = list({row['fcm_token'] for row in token_results}) if token_results else []
+    # Deduplicate by fcm_token while keeping fcm_id
+    token_map = {row['fcm_token']: row['fcm_id'] for row in token_results} if token_results else {}
+    fcm_tokens = [{"fcm_id": fid, "fcm_token": tk} for tk, fid in token_map.items()]
     return {"fcm_tokens": fcm_tokens, "count": len(fcm_tokens)}
 
 @router.delete("/parents/{parent_id}", tags=["Parents"])
@@ -877,6 +884,102 @@ async def delete_parent(parent_id: str):
     except Exception as e:
         logger.error(f"Delete parent error: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete parent")
+
+@router.post("/parents/bulk", response_model=BulkCreateResponse, tags=["Parents"])
+async def bulk_create_parents(bulk_data: BulkParentCreate):
+    """Bulk create multiple parents in a single request (JSON)"""
+    results = {
+        "total": len(bulk_data.parents),
+        "success": 0,
+        "failed": 0,
+        "errors": []
+    }
+    
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            for parent in bulk_data.parents:
+                try:
+                    parent_id = str(uuid.uuid4())
+                    try:
+                        default_password = generate_default_password(parent.name, parent.phone)
+                    except ValueError as e:
+                        results["failed"] += 1
+                        results["errors"].append({"phone": parent.phone, "error": str(e)})
+                        continue
+                        
+                    hashed_password = get_password_hash(default_password)
+                    
+                    query = """
+                    INSERT INTO parents (parent_id, phone, email, password_hash, name, parent_role, 
+                                       door_no, street, city, district, pincode)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """
+                    cursor.execute(query, (parent_id, parent.phone, parent.email, hashed_password, 
+                                         parent.name, parent.parent_role.value, parent.door_no, parent.street,
+                                         parent.city, parent.district, parent.pincode))
+                    
+                    results["success"] += 1
+                except Exception as e:
+                    results["failed"] += 1
+                    results["errors"].append({"phone": parent.phone, "error": str(e)})
+    
+    return results
+
+@router.post("/parents/bulk/csv", response_model=BulkCreateResponse, tags=["Parents"])
+async def bulk_upload_parents_csv(file: UploadFile = File(...)):
+    """Bulk create parents via CSV upload"""
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Only CSV files are allowed")
+    
+    content = await file.read()
+    string_io = io.StringIO(content.decode('utf-8'))
+    reader = csv.DictReader(string_io)
+    
+    results = {
+        "total": 0,
+        "success": 0,
+        "failed": 0,
+        "errors": []
+    }
+    
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            for row in reader:
+                results["total"] += 1
+                try:
+                    parent_id = str(uuid.uuid4())
+                    name = row.get('name')
+                    phone = int(row.get('phone', 0))
+                    email = row.get('email')
+                    role = row.get('parent_role', 'GUARDIAN').upper()
+                    
+                    if not name or not phone:
+                        raise ValueError("Name and phone are required")
+                    
+                    try:
+                        default_password = generate_default_password(name, phone)
+                    except ValueError as e:
+                        results["failed"] += 1
+                        results["errors"].append({"phone": phone, "error": str(e)})
+                        continue
+                        
+                    hashed_password = get_password_hash(default_password)
+                    
+                    query = """
+                    INSERT INTO parents (parent_id, phone, email, password_hash, name, parent_role, 
+                                       door_no, street, city, district, pincode)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """
+                    cursor.execute(query, (parent_id, phone, email, hashed_password, 
+                                         name, role, row.get('door_no'), row.get('street'),
+                                         row.get('city'), row.get('district'), row.get('pincode')))
+                    
+                    results["success"] += 1
+                except Exception as e:
+                    results["failed"] += 1
+                    results["errors"].append({"row": results["total"], "error": str(e)})
+    
+    return results
 
 # =====================================================
 # DRIVER ENDPOINTS
@@ -1022,15 +1125,16 @@ async def patch_driver_fcm_token(driver_id: str, fcm_data: dict):
 
 @router.get("/drivers/fcm-tokens/all", tags=["Drivers"])
 async def get_all_driver_fcm_tokens():
-    """GET: Retrieve all unique driver FCM tokens (flat list)"""
+    """GET: Retrieve all unique driver FCM tokens with fcm_id (using driver_id as fcm_id)"""
     query = """
-    SELECT DISTINCT fcm_token 
+    SELECT driver_id, fcm_token 
     FROM drivers 
     WHERE fcm_token IS NOT NULL AND fcm_token != '' AND status = 'ACTIVE'
     """
     token_results = execute_query(query, fetch_all=True)
-    # Use set comprehension to ensure uniqueness
-    fcm_tokens = list({row['fcm_token'] for row in token_results}) if token_results else []
+    # Deduplicate by fcm_token
+    token_map = {row['fcm_token']: row['driver_id'] for row in token_results} if token_results else {}
+    fcm_tokens = [{"fcm_id": did, "fcm_token": tk} for tk, did in token_map.items()]
     return {"fcm_tokens": fcm_tokens, "count": len(fcm_tokens)}
 
 @router.delete("/drivers/{driver_id}", tags=["Drivers"])
@@ -1845,14 +1949,14 @@ async def delete_class(class_id: str):
 
 @router.get("/classes/{class_id}/fcm-tokens", tags=["Classes"])
 async def get_class_fcm_tokens(class_id: str):
-    """Get unique parent FCM tokens for a specific class (flat list)"""
+    """Get unique parent FCM tokens for a specific class with fcm_id"""
     # Verify class exists
     class_check = execute_query("SELECT class_id FROM classes WHERE class_id = %s", (class_id,), fetch_one=True)
     if not class_check:
         raise HTTPException(status_code=404, detail="Class not found")
         
     query = """
-    SELECT DISTINCT f.fcm_token
+    SELECT f.fcm_id, f.fcm_token
     FROM students s
     JOIN parents p ON (s.parent_id = p.parent_id OR s.s_parent_id = p.parent_id)
     JOIN fcm_tokens f ON p.parent_id = f.parent_id
@@ -1860,22 +1964,11 @@ async def get_class_fcm_tokens(class_id: str):
     AND p.parents_active_status = 'ACTIVE'
     """
     token_results = execute_query(query, (class_id,), fetch_all=True)
-    fcm_tokens = list({row['fcm_token'] for row in token_results}) if token_results else []
+    token_map = {row['fcm_token']: row['fcm_id'] for row in token_results} if token_results else {}
+    fcm_tokens = [{"fcm_id": fid, "fcm_token": tk} for tk, fid in token_map.items()]
     
     return {"fcm_tokens": fcm_tokens}
 
-@router.get("/fcm-tokens/by-class/{class_id}", tags=["FCM Tokens"])
-async def get_fcm_tokens_by_class(class_id: str):
-    """Get all unique FCM tokens for parents and students in a specific class"""
-    query = """
-    SELECT DISTINCT f.fcm_token 
-    FROM fcm_tokens f
-    JOIN students s ON (f.student_id = s.student_id OR f.parent_id = s.parent_id OR f.parent_id = s.s_parent_id)
-    WHERE s.class_id = %s AND f.fcm_token IS NOT NULL AND f.fcm_token != ''
-    """
-    token_results = execute_query(query, (class_id,), fetch_all=True)
-    fcm_tokens = list({row['fcm_token'] for row in token_results}) if token_results else []
-    return {"fcm_tokens": fcm_tokens, "count": len(fcm_tokens)}
 
 @router.get("/students/by-class/{class_id}", response_model=List[StudentResponse], tags=["Students"])
 async def get_students_by_class(class_id: str):
@@ -2527,6 +2620,110 @@ async def delete_student(student_id: str):
         logger.error(f"Delete student error: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete student")
 
+@router.post("/students/bulk", response_model=BulkCreateResponse, tags=["Students"])
+async def bulk_create_students(bulk_data: BulkStudentCreate):
+    """Bulk create multiple students in a single request"""
+    results = {
+        "total": len(bulk_data.students),
+        "success": 0,
+        "failed": 0,
+        "errors": []
+    }
+    
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            for student in bulk_data.students:
+                try:
+                    student_id = str(uuid.uuid4())
+                    query = """
+                    INSERT INTO students (student_id, parent_id, s_parent_id, name, gender, dob, study_year, class_id,
+                                        pickup_route_id, drop_route_id, pickup_stop_id, drop_stop_id,
+                                        emergency_contact, student_photo_url, is_transport_user,
+                                        student_status, transport_status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """
+                    cursor.execute(query, (student_id, student.parent_id, student.s_parent_id, student.name, student.gender.value,
+                                         student.dob, student.study_year, student.class_id, student.pickup_route_id, 
+                                         student.drop_route_id, student.pickup_stop_id, student.drop_stop_id,
+                                         student.emergency_contact, student.student_photo_url, student.is_transport_user,
+                                         student.student_status.value, student.transport_status.value))
+                    
+                    results["success"] += 1
+                except Exception as e:
+                    results["failed"] += 1
+                    results["errors"].append({"name": student.name, "error": str(e)})
+    
+    return results
+
+@router.post("/students/bulk/csv", response_model=BulkCreateResponse, tags=["Students"])
+async def bulk_upload_students_csv(file: UploadFile = File(...)):
+    """Bulk create students via CSV upload"""
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Only CSV files are allowed")
+    
+    content = await file.read()
+    try:
+        string_io = io.StringIO(content.decode('utf-8'))
+    except UnicodeDecodeError:
+        # Try different encoding
+        string_io = io.StringIO(content.decode('latin-1'))
+        
+    reader = csv.DictReader(string_io)
+    
+    results = {
+        "total": 0,
+        "success": 0,
+        "failed": 0,
+        "errors": []
+    }
+    
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            for row in reader:
+                results["total"] += 1
+                try:
+                    student_id = str(uuid.uuid4())
+                    
+                    name = row.get('name')
+                    parent_id = row.get('parent_id')
+                    gender = row.get('gender', 'OTHER').upper()
+                    study_year = row.get('study_year', '2024-25')
+                    
+                    if not name or not parent_id:
+                        raise ValueError("Name and parent_id are required")
+
+                    query = """
+                    INSERT INTO students (student_id, parent_id, s_parent_id, name, gender, dob, study_year, class_id,
+                                        pickup_route_id, drop_route_id, pickup_stop_id, drop_stop_id,
+                                        emergency_contact, is_transport_user)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """
+                    
+                    # Convert optional fields (MySQL expects None for NULL)
+                    dob = row.get('dob') if row.get('dob') and row.get('dob') != '' else None
+                    class_id = row.get('class_id') if row.get('class_id') and row.get('class_id') != '' else None
+                    s_parent_id = row.get('s_parent_id') if row.get('s_parent_id') and row.get('s_parent_id') != '' else None
+                    
+                    emergency_raw = row.get('emergency_contact')
+                    emergency = int(emergency_raw) if emergency_raw and emergency_raw != '' else None
+                    
+                    is_transport_raw = row.get('is_transport_user', 'true').lower()
+                    is_transport = 1 if is_transport_raw in ['true', '1', 'yes'] else 0
+
+                    cursor.execute(query, (
+                        student_id, parent_id, s_parent_id, name, gender,
+                        dob, study_year, class_id, row.get('pickup_route_id'), 
+                        row.get('drop_route_id'), row.get('pickup_stop_id'), row.get('drop_stop_id'),
+                        emergency, is_transport
+                    ))
+                    
+                    results["success"] += 1
+                except Exception as e:
+                    results["failed"] += 1
+                    results["errors"].append({"row": results["total"], "name": row.get('name'), "error": str(e)})
+    
+    return results
+
 # =====================================================
 # TRIP ENDPOINTS
 # =====================================================
@@ -2914,10 +3111,11 @@ async def create_fcm_token(fcm_token: FCMTokenCreate):
 
 @router.get("/fcm-tokens", tags=["FCM Tokens"])
 async def get_all_fcm_tokens():
-    """Get all unique FCM tokens (flat list)"""
-    query = "SELECT DISTINCT fcm_token FROM fcm_tokens WHERE fcm_token IS NOT NULL"
+    """Get all unique FCM tokens with fcm_id"""
+    query = "SELECT fcm_id, fcm_token FROM fcm_tokens WHERE fcm_token IS NOT NULL"
     token_results = execute_query(query, fetch_all=True)
-    fcm_tokens = list({row['fcm_token'] for row in token_results}) if token_results else []
+    token_map = {row['fcm_token']: row['fcm_id'] for row in token_results} if token_results else {}
+    fcm_tokens = [{"fcm_id": fid, "fcm_token": tk} for tk, fid in token_map.items()]
     return {"fcm_tokens": fcm_tokens}
 
 @router.get("/fcm-tokens/{fcm_id}", response_model=FCMTokenResponse, tags=["FCM Tokens"])
@@ -2931,10 +3129,11 @@ async def get_fcm_token(fcm_id: str):
 
 @router.get("/fcm-tokens/by-student/{student_id}", tags=["FCM Tokens"])
 async def get_fcm_tokens_by_student(student_id: str):
-    """Get unique FCM tokens registered for a specific student"""
-    query = "SELECT DISTINCT fcm_token FROM fcm_tokens WHERE student_id = %s"
+    """Get unique FCM tokens registered for a specific student with fcm_id"""
+    query = "SELECT fcm_id, fcm_token FROM fcm_tokens WHERE student_id = %s"
     token_results = execute_query(query, (student_id,), fetch_all=True)
-    fcm_tokens = list({row['fcm_token'] for row in token_results}) if token_results else []
+    token_map = {row['fcm_token']: row['fcm_id'] for row in token_results} if token_results else {}
+    fcm_tokens = [{"fcm_id": fid, "fcm_token": tk} for tk, fid in token_map.items()]
     return {"fcm_tokens": fcm_tokens}
 
 @router.get("/parents/{parent_id}/fcm-tokens", response_model=List[FCMTokenResponse], tags=["FCM Tokens"])
@@ -2948,27 +3147,29 @@ async def get_fcm_tokens_by_parent(parent_id: str):
 async def get_fcm_tokens_by_location(location: str):
     """Searches for all students and parents who are registered at a stop with a specific location name"""
     query = """
-    SELECT DISTINCT ft.fcm_token 
+    SELECT ft.fcm_id, ft.fcm_token 
     FROM fcm_tokens ft
     JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
     JOIN route_stops rs ON (s.pickup_stop_id = rs.stop_id OR s.drop_stop_id = rs.stop_id)
     WHERE rs.location = %s AND ft.fcm_token IS NOT NULL
     """
     token_results = execute_query(query, (location,), fetch_all=True)
-    tokens = list({row['fcm_token'] for row in token_results}) if token_results else []
+    token_map = {row['fcm_token']: row['fcm_id'] for row in token_results} if token_results else {}
+    tokens = [{"fcm_id": fid, "fcm_token": tk} for tk, fid in token_map.items()]
     return {"fcm_tokens": tokens, "count": len(tokens)}
 
 @router.get("/fcm-tokens/by-class/{class_id}", tags=["FCM Tokens"])
 async def get_fcm_tokens_by_class(class_id: str):
-    """Get all unique FCM tokens for parents and students in a specific class"""
+    """Get all unique FCM tokens for parents and students in a specific class with fcm_id"""
     query = """
-    SELECT DISTINCT f.fcm_token 
+    SELECT f.fcm_id, f.fcm_token 
     FROM fcm_tokens f
     JOIN students s ON (f.student_id = s.student_id OR f.parent_id = s.parent_id OR f.parent_id = s.s_parent_id)
     WHERE s.class_id = %s AND f.fcm_token IS NOT NULL AND f.fcm_token != ''
     """
     token_results = execute_query(query, (class_id,), fetch_all=True)
-    fcm_tokens = list({row['fcm_token'] for row in token_results}) if token_results else []
+    token_map = {row['fcm_token']: row['fcm_id'] for row in token_results} if token_results else {}
+    fcm_tokens = [{"fcm_id": fid, "fcm_token": tk} for tk, fid in token_map.items()]
     return {"fcm_tokens": fcm_tokens, "count": len(fcm_tokens)}
 
 @router.put("/fcm-tokens/{fcm_id}", response_model=FCMTokenResponse, tags=["FCM Tokens"])
@@ -3022,6 +3223,7 @@ async def get_fcm_tokens_by_route(route_id: str):
             s.student_id,
             s.name as student_name,
             ft.fcm_token,
+            ft.fcm_id,
             ft.parent_id,
             p.name as parent_name
         FROM route_stops rs
@@ -3043,6 +3245,7 @@ async def get_fcm_tokens_by_route(route_id: str):
             s.student_id,
             s.name as student_name,
             ft.fcm_token,
+            ft.fcm_id,
             ft.parent_id,
             p.name as parent_name
         FROM students s
@@ -3123,6 +3326,7 @@ async def get_fcm_tokens_by_stop(stop_id: str):
             s.student_id,
             s.name as student_name,
             ft.fcm_token,
+            ft.fcm_id,
             ft.parent_id,
             p.name as parent_name
         FROM route_stops rs

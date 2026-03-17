@@ -1,6 +1,6 @@
 import re
 from pydantic import BaseModel, EmailStr, Field, validator, ConfigDict, field_validator
-from typing import Optional, Literal, Any
+from typing import Optional, Literal, Any, List
 from datetime import date, datetime
 from enum import Enum
 
@@ -11,6 +11,12 @@ def phone_validator(v: int) -> int:
         if not re.match(r"^\d{10}$", v_str):
             raise ValueError('Phone number must be exactly 10 digits')
     return v
+
+class BulkCreateResponse(BaseModel):
+    total: int
+    success: int
+    failed: int
+    errors: List[dict] = []
 
 # Enums
 class UserStatus(str, Enum):
@@ -125,7 +131,7 @@ class AdminUpdate(BaseModel):
 
 class AdminResponse(BaseModel):
     admin_id: str
-    phone: int = Field(..., description="User phone number")
+    phone: str = Field(..., max_length=20, description="User phone number")
     email: Optional[EmailStr] = None
     name: str = Field(..., max_length=100)
     status: UserStatus
@@ -137,7 +143,7 @@ class AdminResponse(BaseModel):
 
 # Parent Models
 class ParentBase(BaseModel):
-    phone: int = Field(..., description="User phone number")
+    phone: str = Field(..., max_length=20, description="User phone number")
     email: Optional[EmailStr] = None
     name: str = Field(..., max_length=100)
     parent_role: ParentRole = ParentRole.GUARDIAN
@@ -156,8 +162,11 @@ class ParentBase(BaseModel):
 class ParentCreate(ParentBase):
     pass  # Password will be auto-generated
 
+class BulkParentCreate(BaseModel):
+    parents: List[ParentCreate]
+
 class ParentUpdate(BaseModel):
-    phone: Optional[int] = Field(None, description="User phone number")
+    phone: Optional[str] = Field(None, max_length=20, description="User phone number")
     email: Optional[EmailStr] = None
     name: Optional[str] = Field(None, max_length=100)
     parent_role: Optional[ParentRole] = None
@@ -399,7 +408,7 @@ class StudentCreate(BaseModel):
     drop_route_id: str
     pickup_stop_id: str
     drop_stop_id: str
-    emergency_contact: Optional[int] = Field(None, description="Emergency contact number")
+    emergency_contact: Optional[str] = Field(None, max_length=20, description="Emergency contact number")
     student_photo_url: Optional[str] = Field(None, max_length=200)
     is_transport_user: bool = True
     student_status: StudentStatus = StudentStatus.CURRENT
@@ -416,10 +425,13 @@ class StudentCreate(BaseModel):
     @field_validator('student_photo_url', mode='before')
     @classmethod
     def validate_photo_url(cls, v):
-        """Convert invalid photo URL values to None"""
-        if v in ["", "string", "null"]:
+        """Convert placeholder values to None"""
+        if v in [None, "", "string", "null"]:
             return None
         return v
+
+class BulkStudentCreate(BaseModel):
+    students: List[StudentCreate]
 
 class StudentUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)

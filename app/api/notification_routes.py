@@ -15,6 +15,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+def get_system_admin_id():
+    """Helper to get a valid admin_id for logging system-triggered notifications"""
+    try:
+        admin = execute_query("SELECT admin_id FROM admins WHERE status = 'ACTIVE' LIMIT 1", fetch_one=True)
+        if admin:
+            return admin['admin_id']
+    except:
+        pass
+    return "SYSTEM_ADMIN" # Fallback, but will fail if not in DB
+
 @router.post("/auth/admin/login", response_model=Token, tags=["Authentication"])
 async def admin_login(login_data: LoginRequest):
     """Login for Admin users"""
@@ -225,11 +235,12 @@ async def broadcast_parents(
     # 1. Log the broadcast in history FIRST
     notification_id = str(uuid.uuid4())
     try:
+        admin_id = get_system_admin_id()
         log_query = """
         INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, sent_by_admin_id)
         VALUES (%s, %s, %s, 'ALL', %s)
         """
-        execute_query(log_query, (notification_id, title, body, "SYSTEM_ADMIN"))
+        execute_query(log_query, (notification_id, title, body, admin_id))
     except Exception as log_err:
         logger.warning(f"Failed to log broadcast notification: {log_err}")
 
@@ -281,11 +292,12 @@ async def send_student_notification(
     # 1. Log in history FIRST
     notification_id = str(uuid.uuid4())
     try:
+        admin_id = get_system_admin_id()
         log_query = """
         INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, student_id, sent_by_admin_id)
         VALUES (%s, %s, %s, 'STUDENT', %s, %s)
         """
-        execute_query(log_query, (notification_id, title, body, student_id, "SYSTEM_ADMIN"))
+        execute_query(log_query, (notification_id, title, body, student_id, admin_id))
     except Exception as log_err:
         logger.warning(f"Failed to log student notification: {log_err}")
 
@@ -326,11 +338,12 @@ async def send_parent_notification(
     # 1. Log in history FIRST
     notification_id = str(uuid.uuid4())
     try:
+        admin_id = get_system_admin_id()
         log_query = """
         INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, recipient_id, sent_by_admin_id)
         VALUES (%s, %s, %s, 'PARENT_DIRECT', %s, %s)
         """
-        execute_query(log_query, (notification_id, title, body, parent_id, "SYSTEM_ADMIN"))
+        execute_query(log_query, (notification_id, title, body, parent_id, admin_id))
     except Exception as log_err:
         logger.warning(f"Failed to log parent notification: {log_err}")
 
@@ -371,11 +384,12 @@ async def send_route_notification(
     # 1. Log in history FIRST
     notification_id = str(uuid.uuid4())
     try:
+        admin_id = get_system_admin_id()
         log_query = """
         INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, sent_by_admin_id)
         VALUES (%s, %s, %s, 'ROUTE', %s, %s)
         """
-        execute_query(log_query, (notification_id, title, body, route_id, "SYSTEM_ADMIN"))
+        execute_query(log_query, (notification_id, title, body, route_id, admin_id))
     except Exception as log_err:
         logger.warning(f"Failed to log route notification: {log_err}")
 
@@ -414,11 +428,12 @@ async def send_class_notification(
     # 1. Log in history FIRST
     notification_id = str(uuid.uuid4())
     try:
+        admin_id = get_system_admin_id()
         log_query = """
         INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, class_id, sent_by_admin_id)
         VALUES (%s, %s, %s, 'CLASS', %s, %s)
         """
-        execute_query(log_query, (notification_id, title, body, class_id, "SYSTEM_ADMIN"))
+        execute_query(log_query, (notification_id, title, body, class_id, admin_id))
     except Exception as log_err:
         logger.warning(f"Failed to log class notification: {log_err}")
 
@@ -458,13 +473,17 @@ async def send_location_notification(
     # 1. Log in history FIRST
     notification_id = str(uuid.uuid4())
     try:
+        admin_id = get_system_admin_id()
+        # Sanitize optional route_id
+        safe_route_id = route_id if route_id and str(route_id).strip() != "" else None
+        
         log_query = """
         INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, location_name, route_id, sent_by_admin_id)
         VALUES (%s, %s, %s, 'LOCATION', %s, %s, %s)
         """
-        execute_query(log_query, (notification_id, title, body, location_name, route_id, "SYSTEM_ADMIN"))
+        execute_query(log_query, (notification_id, title, body, location_name, safe_route_id, admin_id))
     except Exception as log_err:
-        logger.warning(f"Failed to log location notification: {log_err}")
+        logger.error(f"Failed to log location notification: {log_err}")
 
     if route_id:
         query = """

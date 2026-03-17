@@ -157,11 +157,17 @@ class ProximityTrackingService:
             )
             # Log in history
             try:
-                execute_query(
-                    "INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, sent_by_admin_id) VALUES (%s, %s, %s, %s, %s, %s)",
-                    (str(uuid.uuid4()), title, body, "ROUTE", route_id, "SYSTEM")
-                )
-            except: pass
+                # Use a valid admin_id for the system to satisfy foreign key constraint
+                admin_res = execute_query("SELECT admin_id FROM admins WHERE status = 'ACTIVE' LIMIT 1", fetch_one=True)
+                admin_id = admin_res['admin_id'] if admin_res else None
+                
+                if admin_id:
+                    execute_query(
+                        "INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, sent_by_admin_id) VALUES (%s, %s, %s, %s, %s, %s)",
+                        (str(uuid.uuid4()), title, body, "ROUTE", route_id, admin_id)
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to log start trip notification: {e}")
         return {"success": True, "recipients": len(tokens)}
 
     async def complete_trip(self, trip_id: str, route_id: str):
@@ -197,11 +203,16 @@ class ProximityTrackingService:
                 recipients_count = len(tokens)
                 # Log in history
                 try:
-                    execute_query(
-                        "INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, sent_by_admin_id) VALUES (%s, %s, %s, %s, %s, %s)",
-                        (str(uuid.uuid4()), title, body, "ROUTE", route_id, "SYSTEM")
-                    )
-                except: pass
+                    admin_res = execute_query("SELECT admin_id FROM admins WHERE status = 'ACTIVE' LIMIT 1", fetch_one=True)
+                    admin_id = admin_res['admin_id'] if admin_res else None
+                    
+                    if admin_id:
+                        execute_query(
+                            "INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, sent_by_admin_id) VALUES (%s, %s, %s, %s, %s, %s)",
+                            (str(uuid.uuid4()), title, body, "ROUTE", route_id, admin_id)
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to log complete trip notification: {e}")
         else:
             logger.info(f"⏭️ Skipping complete notification for {trip_type} trip")
         
