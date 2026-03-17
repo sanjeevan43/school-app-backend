@@ -596,8 +596,8 @@ class FCMTokenResponse(BaseModel):
     fcm_token: str = Field(..., max_length=255)
     student_id: Optional[str] = None
     parent_id: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     
     model_config = ConfigDict(from_attributes=True)
 

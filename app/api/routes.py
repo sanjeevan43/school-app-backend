@@ -3098,12 +3098,9 @@ async def create_fcm_token(fcm_token: FCMTokenCreate):
         """
         execute_query(query, (fcm_id, fcm_token.fcm_token, fcm_token.student_id, fcm_token.parent_id))
         
-        return {
-            "fcm_id": fcm_id,
-            "fcm_token": fcm_token.fcm_token,
-            "student_id": fcm_token.student_id,
-            "parent_id": fcm_token.parent_id
-        }
+        # Return the actual record from database (includes timestamps)
+        result = execute_query("SELECT * FROM fcm_tokens WHERE fcm_token = %s", (fcm_token.fcm_token,), fetch_one=True)
+        return result
     except Exception as e:
         logger.error(f"Create FCM token error: {e}")
         raise HTTPException(status_code=400, detail=f"Failed to create FCM token: {str(e)}")
