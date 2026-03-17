@@ -28,7 +28,9 @@ When an administrator sends a manual notification to parents or students via the
 
 ## 2. Automated Trip Progression Logs
 
-For real-time bus tracking (e.g., "Bus Arrived", "Bus Approaching"), the system logs the status within the `trips` table directly to maintain a "Single Source of Truth" for each journey.
+For real-time bus tracking (e.g., "Bus Arrived", "Bus Approaching"), the system maintains records in two places:
+1. **Persistent History**: Every proximity and tracking alert is stored in `admin_parent_notifications` with a dynamic `admin_id` to ensure long-term retrieval.
+2. **Live Trip Status**: The `trips` table maintains a "Single Source of Truth" for the current journey.
 
 ### 🗄️ Database Table: `trips`
 **Column:** `stop_logs` (JSON)

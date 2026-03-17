@@ -63,11 +63,18 @@ Notifies all parents and students assigned to a specific bus route ID (either pi
 }
 ```
 
-### 4. Send to a Specific Class
-Notifies all parents who have students in a specific class.
-**Endpoint:** `POST /api/v1/notifications/class/{class_id}`
+### 4. Send to a Specific Location Group
+Notifies all parents and students who are registered at any stop with a specific location name (e.g., "Palaya Bus Stand").
+**Endpoint:** `POST /api/v1/notifications/location/{location_name}`
+```json
+{
+  "title": "Bus Status: Palaya Bus Stand",
+  "body": "The bus has reached the main stand. Please be ready.",
+  "route_id": "uuid"
+}
+```
 
-### 5. Individual Notifications
+### 5. Send to a Specific Class
 - **Student Guardians**: `POST /api/v1/notifications/student/{student_id}`
 - **Specific Parent**: `POST /api/v1/notifications/parent/{parent_id}`
 - **Specific Device Token**: `POST /api/v1/notifications/send-device` (Requires `token` field)

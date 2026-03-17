@@ -30,7 +30,7 @@ Authorization: Bearer <your_token_here>
 **Request Body (All Login)**:
 ```json
 {
-  "phone": 9876543210,
+  "phone": "9876543210",
   "password": "your_password"
 }
 ```
@@ -58,7 +58,7 @@ Authorization: Bearer <your_token_here>
 **Request Body**:
 ```json
 {
-  "phone": 9876543210,
+  "phone": "9876543210",
   "email": "admin@school.com",
   "name": "Admin Name"
 }
@@ -99,14 +99,19 @@ Authorization: Bearer <your_token_here>
 ```json
 {
   "name": "Parent Name",
-  "phone": 9876543210,
+  "phone": "9876543210",
   "email": "parent@example.com",
+  "password": "hashed_password",
+  "father_name": "Father Name",
+  "mother_name": "Mother Name",
+  "address": "Home Address",
   "parent_role": "FATHER",
   "door_no": "123",
   "street": "Main Street",
   "city": "Chennai",
   "district": "Chennai",
-  "pincode": "600001"
+  "pincode": "600001",
+  "parents_active_status": "ACTIVE"
 }
 ```
 *Note: Password is auto-generated and hashed by default. Default password is First4Name@Last4Phone.*
@@ -252,6 +257,36 @@ Authorization: Bearer <your_token_here>
 ### 2. Bulk Upgrade
 **Endpoint**: `POST /students/bulk-upgrade-class`
 **Request Body**: `{"current_class_id": "id1", "new_class_id": "id2", "new_study_year": "2024-25"}`
+
+---
+
+## FCM Tokens
+Endpoints for managing device tokens for push notifications.
+
+### 1. Register/Update Token
+**Endpoint**: `POST /fcm-tokens`
+**Description**: Registers a new device. Handles multi-device login permission requests for parents.
+**Response**: `FCMTokenResponse` (includes `fcm_id`)
+
+### 2. Get Tokens
+- `GET /fcm-tokens`: Get all unique tokens (returns list of `{"fcm_id": "...", "fcm_token": "..."}`).
+- `GET /fcm-tokens/by-student/{student_id}`: Tokens for a specific student.
+- `GET /fcm-tokens/by-location/{location}`: Tokens for all students/parents at a specific location name.
+- `GET /fcm-tokens/by-class/{class_id}`: Tokens for an entire class.
+
+---
+
+## Notifications
+Manual and automated notification endpoints. Requires `x-admin-key` for administrative broadcasts.
+
+### 1. Location Notification
+**Endpoint**: `POST /notifications/location/{location_name}`
+**Description**: Sends a message to all parents/students assigned to any stop with this location name.
+**Payload**: `{"title": "...", "body": "...", "route_id": "...", "message_type": "audio|text"}`
+
+### 2. Broadcasts
+- `POST /notifications/broadcast/parents`: All active parents.
+- `POST /notifications/broadcast/drivers`: All active drivers.
 
 ---
 
