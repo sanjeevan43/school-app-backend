@@ -453,7 +453,10 @@ async def create_admin_parent_notification(notification: AdminParentNotification
                 )
                 for token in unique_tokens
             ]
-            await asyncio.gather(*tasks, return_exceptions=True)
+            async def run_parallel_sends():
+                await asyncio.gather(*tasks, return_exceptions=True)
+            
+            asyncio.create_task(run_parallel_sends())
         
         return await get_admin_parent_notification(notification_id)
     except Exception as e:
@@ -949,7 +952,7 @@ async def bulk_upload_parents_csv(file: UploadFile = File(...)):
                 try:
                     parent_id = str(uuid.uuid4())
                     name = row.get('name')
-                    phone = int(row.get('phone', 0))
+                    phone = row.get('phone', '') # Keep as original (likely string or int)
                     email = row.get('email')
                     role = row.get('parent_role', 'GUARDIAN').upper()
                     

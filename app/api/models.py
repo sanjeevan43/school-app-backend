@@ -104,7 +104,7 @@ class ActiveFilter(str, Enum):
 
 # Admin Models
 class AdminBase(BaseModel):
-    phone: int = Field(..., description="User phone number")
+    phone: str = Field(..., max_length=20, description="User phone number")
     email: Optional[EmailStr] = None
     name: str = Field(..., max_length=100)
 
@@ -118,7 +118,7 @@ class AdminCreate(AdminBase):
     pass
 
 class AdminUpdate(BaseModel):
-    phone: Optional[int] = Field(None, description="User phone number")
+    phone: Optional[str] = Field(None, max_length=20, description="User phone number")
     email: Optional[EmailStr] = None
     name: Optional[str] = Field(None, max_length=100)
     status: Optional[UserStatus] = None
@@ -139,7 +139,7 @@ class AdminResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
 # Parent Models
 class ParentBase(BaseModel):
@@ -185,7 +185,7 @@ class ParentUpdate(BaseModel):
 
 class ParentResponse(BaseModel):
     parent_id: str
-    phone: int = Field(..., description="User phone number")
+    phone: str = Field(..., max_length=20, description="User phone number")
     email: Optional[EmailStr] = None
     name: str = Field(..., max_length=100)
     parent_role: ParentRole = ParentRole.GUARDIAN
@@ -199,12 +199,12 @@ class ParentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
 # Driver Models
 class DriverBase(BaseModel):
     name: str = Field(..., max_length=100)
-    phone: int = Field(..., description="User phone number")
+    phone: str = Field(..., max_length=20, description="User phone number")
     email: Optional[EmailStr] = None
     licence_number: Optional[str] = Field(None, max_length=50)
     licence_expiry: Optional[date] = None
@@ -222,7 +222,7 @@ class DriverCreate(DriverBase):
 
 class DriverUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
-    phone: Optional[int] = Field(None, description="User phone number")
+    phone: Optional[str] = Field(None, max_length=20, description="User phone number")
     email: Optional[EmailStr] = None
     licence_number: Optional[str] = Field(None, max_length=50)
     licence_expiry: Optional[date] = None
@@ -238,7 +238,7 @@ class DriverUpdate(BaseModel):
 class DriverResponse(BaseModel):
     driver_id: str
     name: str = Field(..., max_length=100)
-    phone: int = Field(..., description="User phone number")
+    phone: str = Field(..., max_length=20, description="User phone number")
     email: Optional[EmailStr] = None
     licence_number: Optional[str] = Field(None, max_length=50)
     licence_expiry: Optional[date] = None
@@ -247,7 +247,7 @@ class DriverResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
 # Route Models
 class RouteBase(BaseModel):
@@ -267,7 +267,7 @@ class RouteResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
 # Bus Models
 class BusBase(BaseModel):
@@ -328,7 +328,7 @@ class BusResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
 # Class Models
 class ClassBase(BaseModel):
@@ -352,7 +352,7 @@ class ClassResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
 # Route Stop Models
 class RouteStopBase(BaseModel):
@@ -393,7 +393,7 @@ class RouteStopResponse(BaseModel):
     drop_stop_order: int
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
 # Student Models
 class StudentCreate(BaseModel):
@@ -444,7 +444,7 @@ class StudentUpdate(BaseModel):
     pickup_stop_id: Optional[str] = None
     drop_stop_id: Optional[str] = None
     is_transport_user: Optional[bool] = None
-    emergency_contact: Optional[int] = None
+    emergency_contact: Optional[str] = Field(None, max_length=20, description="Emergency contact number")
     student_photo_url: Optional[str] = None
     student_status: Optional[StudentStatus] = None
     transport_status: Optional[TransportStatus] = None
@@ -499,7 +499,7 @@ class StudentResponse(BaseModel):
     drop_route_id: str
     pickup_stop_id: str
     drop_stop_id: str
-    emergency_contact: Optional[int] = None
+    emergency_contact: Optional[str] = None
     student_photo_url: Optional[str] = None
     student_status: StudentStatus
     transport_status: TransportStatus
@@ -507,7 +507,7 @@ class StudentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
 # Trip Models
 class TripBase(BaseModel):
@@ -542,7 +542,7 @@ class TripResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
 # Authentication Models
 class Token(BaseModel):
@@ -552,7 +552,7 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     user_id: Optional[str] = None
     user_type: Optional[str] = None
-    phone: Optional[int] = None
+    phone: Optional[str] = None
 
 # Error Handling Models
 class ErrorHandlingBase(BaseModel):
@@ -575,7 +575,7 @@ class ErrorHandlingResponse(BaseModel):
     error_description: Optional[str] = Field(None, max_length=255)
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
 # FCM Token Models
 class FCMTokenBase(BaseModel):
@@ -599,7 +599,7 @@ class FCMTokenResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
 class BusLocationUpdate(BaseModel):
     trip_id: str
@@ -617,7 +617,7 @@ class DriverLocationResponse(BaseModel):
     longitude: float
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
 class NotificationRequest(BaseModel):
     trip_id: str
@@ -633,7 +633,7 @@ class NotificationRequest(BaseModel):
 
 # Universal login model (phone + password)
 class LoginRequest(BaseModel):
-    phone: int = Field(..., description="User phone number")
+    phone: str = Field(..., max_length=20, description="User phone number")
     password: str = Field(..., min_length=1, description="User password")
 
     @field_validator('phone')
@@ -670,7 +670,7 @@ class PasswordReset(BaseModel):
     new_password: str = Field(..., min_length=1, max_length=72, description="New user password")
 
 class PasswordResetByPhone(BaseModel):
-    phone: int = Field(..., description="User phone number")
+    phone: str = Field(..., max_length=20, description="User phone number")
     new_password: str = Field(..., min_length=1, max_length=72, description="New user password")
 
     @field_validator('phone')
@@ -701,7 +701,7 @@ class AdminParentNotificationResponse(AdminParentNotificationBase):
     notification_id: str
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
 
 # App Versioning Models
 class AppVersionCheckRequest(BaseModel):
@@ -737,4 +737,4 @@ class AppVersionFullResponse(AppVersionBase):
     id: str
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, coerce_numbers_to_str=True)
