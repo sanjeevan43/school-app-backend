@@ -17,6 +17,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_tags=[
+        {"name": "Dashboard", "description": "System statistics and analytics"},
         {"name": "Authentication", "description": "Login and authentication"},
         {"name": "Admins", "description": "System administrators"},
         {"name": "Parents", "description": "Parent/guardian management"},

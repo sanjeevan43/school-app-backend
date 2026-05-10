@@ -23,6 +23,72 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # =====================================================
+# DASHBOARD ENDPOINTS
+# =====================================================
+
+@router.get("/dashboard/stats", response_model=DashboardStatsResult, tags=["Dashboard"])
+async def get_dashboard_stats():
+    """Retrieve comprehensive statistics for the admin dashboard"""
+    try:
+        # 1. Summary Counts
+        summary_query = """
+        SELECT 
+            (SELECT COUNT(*) FROM students) as total_students,
+            (SELECT COUNT(*) FROM drivers) as total_drivers,
+            (SELECT COUNT(*) FROM parents) as total_parents,
+            (SELECT COUNT(*) FROM routes) as total_routes
+        """
+        summary_data = execute_query(summary_query, fetch_one=True)
+        
+        # 2. Fleet Status
+        fleet_query = """
+        SELECT 
+            COUNT(CASE WHEN status = 'ACTIVE' THEN 1 END) as active,
+            COUNT(CASE WHEN status = 'INACTIVE' THEN 1 END) as inactive,
+            COUNT(CASE WHEN status = 'MAINTENANCE' THEN 1 END) as maintenance,
+            COUNT(CASE WHEN status = 'SPARE' THEN 1 END) as spare,
+            COUNT(*) as total_buses
+        FROM buses
+        """
+        fleet_data = execute_query(fleet_query, fetch_one=True)
+        
+        # 3. Route Distribution
+        route_dist_query = """
+        SELECT 
+            r.route_id, 
+            r.name as route_name,
+            SUM(CASE WHEN s.gender = 'MALE' THEN 1 ELSE 0 END) as male,
+            SUM(CASE WHEN s.gender = 'FEMALE' THEN 1 ELSE 0 END) as female,
+            COUNT(s.student_id) as total
+        FROM routes r
+        LEFT JOIN students s ON r.route_id = s.pickup_route_id
+        GROUP BY r.route_id, r.name
+        """
+        route_distribution = execute_query(route_dist_query, fetch_all=True) or []
+        
+        # 4. Maintenance Alerts
+        maintenance_query = """
+        SELECT 
+            (SELECT COUNT(*) FROM drivers WHERE licence_expiry < CURDATE()) as expired_licenses,
+            (SELECT COUNT(*) FROM buses WHERE fc_expiry_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)) as upcoming_fc,
+            (SELECT COUNT(*) FROM buses WHERE rc_expiry_date < CURDATE()) as expired_insurance
+        """
+        maintenance_data = execute_query(maintenance_query, fetch_one=True)
+        
+        return {
+            "status": "success",
+            "data": {
+                "summary": summary_data,
+                "fleet_status": fleet_data,
+                "route_distribution": route_distribution,
+                "maintenance_alerts": maintenance_data
+            }
+        }
+    except Exception as e:
+        logger.error(f"Dashboard stats error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch dashboard stats: {str(e)}")
+
+# =====================================================
 # USER PROFILE & AUTHENTICATION
 # =====================================================
 

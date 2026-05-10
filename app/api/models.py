@@ -743,3 +743,39 @@ class AppVersionFullResponse(AppVersionBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+# Dashboard Stats Models
+class DashboardSummary(BaseModel):
+    total_students: int
+    total_drivers: int
+    total_parents: int
+    total_routes: int
+
+class FleetStatus(BaseModel):
+    active: int
+    inactive: int
+    maintenance: int
+    spare: int
+    total_buses: int
+
+class RouteDistribution(BaseModel):
+    route_id: str
+    route_name: str
+    male: int
+    female: int
+    total: int
+
+class MaintenanceAlerts(BaseModel):
+    expired_licenses: int
+    upcoming_fc: int
+    expired_insurance: int
+
+class DashboardStatsResponse(BaseModel):
+    summary: DashboardSummary
+    fleet_status: FleetStatus
+    route_distribution: List[RouteDistribution]
+    maintenance_alerts: MaintenanceAlerts
+
+class DashboardStatsResult(BaseModel):
+    status: str = "success"
+    data: DashboardStatsResponse
