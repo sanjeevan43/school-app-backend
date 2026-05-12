@@ -33,8 +33,8 @@ class Settings(BaseSettings):
     BASE_URL: str = "http://localhost:8080"
     
     # Docs Authentication
-    DOCS_USERNAME: str = "selvagamadmin"
-    DOCS_PASSWORD: str = "Selvagam@2025"
+    DOCS_USERNAME: str
+    DOCS_PASSWORD: str
     
     class Config:
         env_file = ".env"
