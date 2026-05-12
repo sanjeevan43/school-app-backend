@@ -321,8 +321,10 @@ async def update_admin(admin_id: str, admin_update: AdminUpdate):
             update_fields.append("password_hash = %s")
             values.append(get_password_hash(value))
         elif field != "password" and value is not None:
+            # Handle Enum values
+            final_val = value.value if hasattr(value, 'value') else value
             update_fields.append(f"{field} = %s")
-            values.append(value)
+            values.append(final_val)
             
     if should_refresh_default:
         new_default = generate_default_password(final_name, final_phone)
@@ -764,8 +766,10 @@ async def update_parent(parent_id: str, parent_update: ParentUpdate):
                 update_fields.append("password_hash = %s")
                 values.append(get_password_hash(value))
             elif field != "password" and value is not None:
+                # Handle Enum values
+                final_val = value.value if hasattr(value, 'value') else value
                 update_fields.append(f"{field} = %s")
-                values.append(value)
+                values.append(final_val)
         
         if should_refresh_default:
             new_default = generate_default_password(final_name, final_phone)
@@ -1172,8 +1176,10 @@ async def update_driver(driver_id: str, driver_update: DriverUpdate):
             update_fields.append("password_hash = %s")
             values.append(get_password_hash(value))
         elif field != "password" and value is not None:
+            # Handle Enum values
+            final_val = value.value if hasattr(value, 'value') else value
             update_fields.append(f"{field} = %s")
-            values.append(value)
+            values.append(final_val)
             
     if should_refresh_default:
         new_default = generate_default_password(final_name, final_phone)
