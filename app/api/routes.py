@@ -778,9 +778,11 @@ async def update_parent(parent_id: str, parent_update: ParentUpdate):
         values.append(parent_id)
         query = f"UPDATE parents SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE parent_id = %s"
         
-        execute_query(query, tuple(values))
+        result = execute_query(query, tuple(values))
         if result == 0:
-            raise HTTPException(status_code=404, detail="Parent not found")
+            # Note: result might be 0 if the data sent was identical to what was already there
+            # but we've already verified the record exists at the start of the function.
+            pass
         
         # Trigger cascade updates
         new_data = parent_update.dict(exclude_unset=True)
