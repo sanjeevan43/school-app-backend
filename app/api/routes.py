@@ -754,6 +754,9 @@ async def update_parent(parent_id: str, parent_update: ParentUpdate):
         if not old_parent:
             raise HTTPException(status_code=404, detail="Parent not found")
         
+        update_fields = []
+        values = []
+        
         # Determine new values
         final_name = parent_update.name if parent_update.name is not None else old_parent['name']
         final_phone = parent_update.phone if parent_update.phone is not None else old_parent['phone']
