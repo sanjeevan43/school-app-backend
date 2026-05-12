@@ -3149,20 +3149,16 @@ async def create_fcm_token(fcm_token: FCMTokenCreate):
                 # 3. Send Request to OLD token
                 await notification_service.send_login_request(old_token_data['fcm_token'], request_id, device_info)
                 
-                # Return the pending status
-                return {
-                    "fcm_id": request_id, # Reusing ID field for request tracking
-                    "fcm_token": fcm_token.fcm_token,
-                    "parent_id": fcm_token.parent_id,
-                    "student_id": fcm_token.student_id
-                }
+                # NOTE: We no longer return early here so that the token is actually stored/updated in the DB
+                # as requested by the user. The login_request acts as an audit log.
 
-        # No conflict or student registration - process immediately
+        # Process immediately
         query = """
         INSERT INTO fcm_tokens (fcm_id, fcm_token, student_id, parent_id) 
         VALUES (%s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE 
         fcm_token = VALUES(fcm_token),
+        student_id = VALUES(student_id),
         updated_at = CURRENT_TIMESTAMP
         """
         execute_query(query, (fcm_id, fcm_token.fcm_token, fcm_token.student_id, fcm_token.parent_id))
