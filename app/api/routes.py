@@ -243,15 +243,13 @@ async def create_admin(admin: AdminCreate):
     try:
         admin_id = str(uuid.uuid4())
         
-        # Use provided password or generate default
-        if admin.password:
-            hashed_password = get_password_hash(admin.password)
-        else:
-            try:
-                default_password = generate_default_password(admin.name, admin.phone)
-                hashed_password = get_password_hash(default_password)
-            except ValueError as e:
-                raise HTTPException(status_code=400, detail=str(e))
+        # Auto-generate password
+        try:
+            default_password = generate_default_password(admin.name, admin.phone)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+            
+        hashed_password = get_password_hash(default_password)
         
         query = """
         INSERT INTO admins (admin_id, phone, email, password_hash, name)
@@ -306,13 +304,12 @@ async def update_admin(admin_id: str, admin_update: AdminUpdate):
     values = []
     
     for field, value in admin_update.dict(exclude_unset=True).items():
-        if value is not None:
-            if field == 'password':
-                update_fields.append("password_hash = %s")
-                values.append(get_password_hash(value))
-            else:
-                update_fields.append(f"{field} = %s")
-                values.append(value)
+        if field == "password" and value:
+            update_fields.append("password_hash = %s")
+            values.append(get_password_hash(value))
+        elif field != "password" and value is not None:
+            update_fields.append(f"{field} = %s")
+            values.append(value)
     
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -641,15 +638,13 @@ async def create_parent(parent: ParentCreate):
     try:
         parent_id = str(uuid.uuid4())
         
-        # Use provided password or generate default
-        if parent.password:
-            hashed_password = get_password_hash(parent.password)
-        else:
-            try:
-                default_password = generate_default_password(parent.name, parent.phone)
-                hashed_password = get_password_hash(default_password)
-            except ValueError as e:
-                raise HTTPException(status_code=400, detail=str(e))
+        # Auto-generate password
+        try:
+            default_password = generate_default_password(parent.name, parent.phone)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+            
+        hashed_password = get_password_hash(default_password)
         
         query = """
         INSERT INTO parents (parent_id, phone, email, password_hash, name, parent_role, 
@@ -746,13 +741,12 @@ async def update_parent(parent_id: str, parent_update: ParentUpdate):
         values = []
         
         for field, value in parent_update.dict(exclude_unset=True).items():
-            if value is not None:
-                if field == 'password':
-                    update_fields.append("password_hash = %s")
-                    values.append(get_password_hash(value))
-                else:
-                    update_fields.append(f"{field} = %s")
-                    values.append(value)
+            if field == "password" and value:
+                update_fields.append("password_hash = %s")
+                values.append(get_password_hash(value))
+            elif field != "password" and value is not None:
+                update_fields.append(f"{field} = %s")
+                values.append(value)
         
         if not update_fields:
             raise HTTPException(status_code=400, detail="No fields to update")
@@ -1072,15 +1066,13 @@ async def create_driver(driver: DriverCreate):
     try:
         driver_id = str(uuid.uuid4())
         
-        # Use provided password or generate default
-        if driver.password:
-            hashed_password = get_password_hash(driver.password)
-        else:
-            try:
-                default_password = generate_default_password(driver.name, driver.phone)
-                hashed_password = get_password_hash(default_password)
-            except ValueError as e:
-                raise HTTPException(status_code=400, detail=str(e))
+        # Auto-generate password
+        try:
+            default_password = generate_default_password(driver.name, driver.phone)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+            
+        hashed_password = get_password_hash(default_password)
         
         query = """
         INSERT INTO drivers (driver_id, name, phone, email, licence_number, licence_expiry, 
@@ -1138,13 +1130,12 @@ async def update_driver(driver_id: str, driver_update: DriverUpdate):
     values = []
     
     for field, value in driver_update.dict(exclude_unset=True).items():
-        if value is not None:
-            if field == 'password':
-                update_fields.append("password_hash = %s")
-                values.append(get_password_hash(value))
-            else:
-                update_fields.append(f"{field} = %s")
-                values.append(value)
+        if field == "password" and value:
+            update_fields.append("password_hash = %s")
+            values.append(get_password_hash(value))
+        elif field != "password" and value is not None:
+            update_fields.append(f"{field} = %s")
+            values.append(value)
     
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update")

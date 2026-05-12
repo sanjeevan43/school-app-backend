@@ -112,7 +112,6 @@ class AdminBase(BaseModel):
     phone: int = Field(..., description="User phone number")
     email: Optional[EmailStr] = None
     name: str = Field(..., max_length=100)
-    password: Optional[str] = Field(None, description="User password")
 
     @field_validator('phone')
     @classmethod
@@ -127,8 +126,8 @@ class AdminUpdate(BaseModel):
     phone: Optional[int] = Field(None, description="User phone number")
     email: Optional[EmailStr] = None
     name: Optional[str] = Field(None, max_length=100)
-    password: Optional[str] = Field(None, description="New password")
     status: Optional[UserStatus] = None
+    password: Optional[str] = Field(None, min_length=1, max_length=72, description="New password")
 
     @field_validator('phone')
     @classmethod
@@ -153,7 +152,6 @@ class ParentBase(BaseModel):
     phone: int = Field(..., description="User phone number")
     email: Optional[EmailStr] = None
     name: str = Field(..., max_length=100)
-    password: Optional[str] = Field(None, description="User password")
     parent_role: ParentRole = ParentRole.GUARDIAN
     door_no: Optional[str] = Field(None, max_length=50)
     street: Optional[str] = Field(None, max_length=100)
@@ -183,8 +181,8 @@ class ParentUpdate(BaseModel):
     city: Optional[str] = Field(None, max_length=50)
     district: Optional[str] = Field(None, max_length=50)
     pincode: Optional[str] = Field(None, max_length=10)
-    password: Optional[str] = Field(None, description="New password")
     parents_active_status: Optional[UserStatus] = None
+    password: Optional[str] = Field(None, min_length=1, max_length=72, description="New password")
 
     @field_validator('phone')
     @classmethod
@@ -214,7 +212,6 @@ class ParentResponse(BaseModel):
 class DriverBase(BaseModel):
     name: str = Field(..., max_length=100)
     phone: int = Field(..., description="User phone number")
-    password: Optional[str] = Field(None, description="User password")
     email: Optional[EmailStr] = None
     licence_number: Optional[str] = Field(None, max_length=50)
     licence_expiry: Optional[date] = None
@@ -236,9 +233,9 @@ class DriverUpdate(BaseModel):
     email: Optional[EmailStr] = None
     licence_number: Optional[str] = Field(None, max_length=50)
     licence_expiry: Optional[date] = None
-    password: Optional[str] = Field(None, description="New password")
     fcm_token: Optional[str] = Field(None, max_length=255)
     status: Optional[DriverStatus] = None
+    password: Optional[str] = Field(None, min_length=1, max_length=72, description="New password")
 
     @field_validator('phone')
     @classmethod
