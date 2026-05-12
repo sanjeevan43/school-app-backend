@@ -74,10 +74,20 @@ Notifies all parents and students who are registered at any stop with a specific
 }
 ```
 
-### 5. Send to a Specific Class
+### 5. Send to a Specific Recipient
 - **Student Guardians**: `POST /api/v1/notifications/student/{student_id}`
 - **Specific Parent**: `POST /api/v1/notifications/parent/{parent_id}`
 - **Specific Device Token**: `POST /api/v1/notifications/send-device` (Requires `token` field)
+
+---
+
+## 📜 Notification History (Logging)
+Every notification sent via the `/notifications/...` endpoints is automatically logged in the system history for audit and parent review.
+
+**Endpoints:**
+- `GET /api/v1/admin-parent-notifications` - All history
+- `GET /api/v1/admin-parent-notifications/parent/{parent_id}` - Relevant history for a parent app to display in a "Inbox" or "Alerts" screen.
+- `GET /api/v1/admin-parent-notifications/student/{student_id}` - History for a specific student.
 
 ---
 

@@ -97,7 +97,7 @@ The system automatically filters which parents to notify based on the distance b
 ---
 
 ## 🚀 How to Use (Frontend Integration)
-1. Call `PUT /api/v1/trips/{trip_id}/start` when the driver clicks "Start Trip".
+1. Call `PUT /api/v1/trips/{trip_id}/start` (Notifies parents of the first stop only) or `POST /api/v1/trip/start` (Notifies all parents on the route) when the driver clicks "Start Trip".
 2. Start a background GPS timer on the driver's phone.
 3. Every 5-10 seconds, call `POST /api/v1/bus-tracking/location` with the current coordinates.
 4. The backend will handle all logic:

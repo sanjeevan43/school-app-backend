@@ -59,7 +59,10 @@ school-app-backend/
 - **Driver Status**: `ACTIVE`, `INACTIVE`, `SUSPENDED`, `RESIGNED`
 
 ### Advanced Features
+- **Dashboard Analytics**: Real-time summary of students, parents, fleet status, and maintenance alerts
 - **Split Authentication**: Separate login endpoints for Admins, Parents, and Drivers
+- **Single-Device Login**: Multi-device login enforcement with approval/rejection workflow
+- **Logout Support**: Clean session termination and FCM token removal
 - **Real-time Bus Tracking**: Automated stop progression and trip auto-completion
 - **Proximity Alerts**: Geofence-based notifications ("Approaching", "Arrived")
 - **FCM Notifications**: Targeted broadcasts by Route, Class, or Individual
@@ -118,6 +121,9 @@ Once running, access interactive documentation at:
 - `GET /api/v1/auth/admin/profile/phone/{phone}` - Admin profile
 - `GET /api/v1/auth/parent/profile/phone/{phone}` - Parent profile
 - `GET /api/v1/auth/driver/profile/phone/{phone}` - Driver profile
+- `POST /api/v1/auth/logout` - User logout
+- `POST /api/v1/auth/login-requests/{id}/respond` - Approve/Reject new login
+- `GET /api/v1/dashboard/stats` - Admin dashboard metrics
 
 ### Tracking & Alerts
 - `POST /api/v1/bus-tracking/location` - Combined tracking & proximity alerts

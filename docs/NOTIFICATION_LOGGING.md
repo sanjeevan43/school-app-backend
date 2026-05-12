@@ -15,14 +15,22 @@ When an administrator sends a manual notification to parents or students via the
 | `notification_id` | `UUID (PK)` | Unique identifier for the log entry. |
 | `title` | `VARCHAR(150)` | The title of the sent notification. |
 | `message` | `TEXT` | The full body content of the message. |
-| `student_id` | `UUID (FK)` | The specific student the message concerns (Optional). |
+| `recipient_type` | `ENUM` | `STUDENT`, `PARENT_DIRECT`, `ROUTE`, `CLASS`, `LOCATION`, `ALL` |
+| `student_id` | `UUID (FK)` | The specific student (Optional). |
+| `route_id` | `UUID (FK)` | The specific route (Optional). |
+| `class_id` | `UUID (FK)` | The specific class (Optional). |
+| `location_name` | `VARCHAR` | The specific stop location name (Optional). |
+| `recipient_id` | `UUID (FK)` | The direct parent recipient (Optional). |
 | `sent_by_admin_id` | `UUID (FK)` | ID of the administrator who triggered the send. |
 | `created_at` | `TIMESTAMP` | Record of exactly when the notification was sent. |
 
 ### 🔍 Retrieval Endpoints
+- `GET /api/v1/admin-parent-notifications`: All history (paged).
 - `GET /api/v1/admin-parent-notifications/student/{student_id}`: History for a specific student.
-- `GET /api/v1/admin-parent-notifications/parent/{parent_id}`: History for all students under one parent.
+- `GET /api/v1/admin-parent-notifications/parent/{parent_id}`: History for all relevant notifications to a parent.
 - `GET /api/v1/admin-parent-notifications/admin/{admin_id}`: History of messages sent by a specific admin.
+- `GET /api/v1/admin-parent-notifications/route/{route_id}`: History for a specific route.
+- `GET /api/v1/admin-parent-notifications/class/{class_id}`: History for a specific class.
 
 ---
 

@@ -30,7 +30,11 @@ class Settings(BaseSettings):
     GEOFENCE_RADIUS: int = 500
     # Upload Configuration
     UPLOAD_DIR: str = "uploads"
-    BASE_URL: str = "http://localhost:8085"
+    BASE_URL: str = "http://localhost:8080"
+    
+    # Docs Authentication
+    DOCS_USERNAME: str = "selvagamadmin"
+    DOCS_PASSWORD: str = "selvagam_admin"
     
     class Config:
         env_file = ".env"

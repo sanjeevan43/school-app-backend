@@ -8,6 +8,15 @@
 
 ---
 
+## Dashboard
+
+### 1. Get Dashboard Statistics
+**Endpoint**: `GET /dashboard/stats`
+**Description**: Retrieve comprehensive statistics for the admin dashboard, including student/parent/driver counts, fleet status distribution, gender-based route enrollment, and maintenance alerts.
+**Tags**: `Dashboard`
+
+---
+
 ## Authentication
 
 All protected endpoints require a JWT token in the Authorization header:
@@ -43,7 +52,18 @@ Authorization: Bearer <your_token_here>
 }
 ```
 
-### 4. Get Profile (By Phone)
+### 4. Logout
+**Endpoint**: `POST /auth/logout`
+**Description**: Logout the user and remove their FCM token from the system.
+**Request Body**: `{"fcm_token": "string"}` (Optional, recommended)
+
+### 5. Login Requests (New Device)
+- **Respond to Request**: `POST /auth/login-requests/{request_id}/respond`
+  - **Body**: `{"action": "APPROVE" | "REJECT"}`
+  - **Description**: Approve or reject a login request from a new device (triggered by single-device login policy).
+- **Check Request Status**: `GET /auth/login-requests/{request_id}`
+
+### 6. Get Profile (By Phone)
 **Endpoints**: 
 - `GET /auth/admin/profile/phone/{phone}`
 - `GET /auth/parent/profile/phone/{phone}`
@@ -258,6 +278,28 @@ Authorization: Bearer <your_token_here>
 **Endpoint**: `POST /students/bulk-upgrade-class`
 **Request Body**: `{"current_class_id": "id1", "new_class_id": "id2", "new_study_year": "2024-25"}`
 
+### 3. Demote All
+**Endpoint**: `POST /classes/demote-all`
+**Description**: Decrements all students by one grade (Admin rollback).
+
+---
+
+## Admin Parent Notification History
+Endpoints for tracking and reviewing notifications sent by admins to parents/students.
+
+### 1. Send & Record Notification
+**Endpoint**: `POST /admin-parent-notifications`
+**Description**: Sends an FCM notification AND records it in the history database.
+
+### 2. Get Notification History
+- `GET /admin-parent-notifications`: List all notifications (with limit/offset and filters).
+- `GET /admin-parent-notifications/{id}`: Specific notification details.
+- `GET /admin-parent-notifications/student/{student_id}`: History for a specific student.
+- `GET /admin-parent-notifications/parent/{parent_id}`: History relevant to a specific parent.
+- `GET /admin-parent-notifications/admin/{admin_id}`: Notifications sent by a specific admin.
+- `GET /admin-parent-notifications/route/{route_id}`: History for a specific route.
+- `GET /admin-parent-notifications/class/{class_id}`: History for a specific class.
+
 ---
 
 ## FCM Tokens
@@ -287,6 +329,11 @@ Manual and automated notification endpoints. Requires `x-admin-key` for administ
 ### 2. Broadcasts
 - `POST /notifications/broadcast/parents`: All active parents.
 - `POST /notifications/broadcast/drivers`: All active drivers.
+
+### 3. Manual Send
+**Endpoint**: `POST /notifications/manual-send`
+**Description**: Send a notification to a specific list of FCM tokens.
+**Payload**: `{"title": "...", "message": "...", "tokens": ["token1", "token2"]}`
 
 ---
 

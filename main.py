@@ -1,11 +1,14 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from app.core.config import get_settings
 import uvicorn
 import os
 import logging
+import secrets
 
 settings = get_settings()
 logging.basicConfig(level=logging.INFO)
@@ -14,8 +17,9 @@ logging.basicConfig(level=logging.INFO)
 app = FastAPI(
     title="School Transport Management API",
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
     openapi_tags=[
         {"name": "Dashboard", "description": "System statistics and analytics"},
         {"name": "Authentication", "description": "Login and authentication"},
@@ -38,6 +42,39 @@ app = FastAPI(
         "email": "admin@school.com",
     }
 )
+
+security = HTTPBasic()
+
+def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
+    current_username_bytes = credentials.username.encode("utf8")
+    correct_username_bytes = settings.DOCS_USERNAME.encode("utf8")
+    is_correct_username = secrets.compare_digest(
+        current_username_bytes, correct_username_bytes
+    )
+    current_password_bytes = credentials.password.encode("utf8")
+    correct_password_bytes = settings.DOCS_PASSWORD.encode("utf8")
+    is_correct_password = secrets.compare_digest(
+        current_password_bytes, correct_password_bytes
+    )
+    if not (is_correct_username and is_correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
+@app.get("/docs", include_in_schema=False)
+async def get_swagger_documentation(username: str = Depends(get_current_username)):
+    return get_swagger_ui_html(openapi_url="/openapi.json", title="docs")
+
+@app.get("/redoc", include_in_schema=False)
+async def get_redoc_documentation(username: str = Depends(get_current_username)):
+    return get_redoc_html(openapi_url="/openapi.json", title="redoc")
+
+@app.get("/openapi.json", include_in_schema=False)
+async def openapi(username: str = Depends(get_current_username)):
+    return JSONResponse(app.openapi())
 
 # Configure CORS
 origins = [

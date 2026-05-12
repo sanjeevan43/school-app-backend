@@ -2,18 +2,22 @@
 
 ## 📋 Table of Contents
 1. [Overview](#overview)
-2. [Authentication APIs](#authentication-apis)
-3. [Admin APIs](#admin-apis)
-4. [Parent APIs](#parent-apis)
-5. [Driver APIs](#driver-apis)
-6. [Route APIs](#route-apis)
-7. [Bus APIs](#bus-apis)
-8. [Route Stop APIs](#route-stop-apis)
-9. [Student APIs](#student-apis)
-10. [Trip APIs](#trip-apis)
-11. [Tracking & Proximity APIs](#tracking--proximity-apis)
-12. [Class & Promotion APIs](#class--promotion-apis)
-13. [Database Table Models](#database-table-models)
+2. [Dashboard APIs](#dashboard-apis)
+3. [Authentication APIs](#authentication-apis)
+4. [Admin APIs](#admin-apis)
+5. [Parent APIs](#parent-apis)
+6. [Driver APIs](#driver-apis)
+7. [Route APIs](#route-apis)
+8. [Bus APIs](#bus-apis)
+9. [Route Stop APIs](#route-stop-apis)
+10. [Student APIs](#student-apis)
+11. [Trip APIs](#trip-apis)
+12. [Tracking & Proximity APIs](#tracking--proximity-apis)
+13. [Class & Promotion APIs](#class--promotion-apis)
+14. [Notification History APIs](#notification-history-apis)
+15. [Mobile App Versioning APIs](#mobile-app-versioning-apis)
+16. [Error Handling APIs](#error-handling-apis)
+17. [Database Table Models](#database-table-models)
 
 ---
 
@@ -22,6 +26,11 @@
 **Base URL**: `http://api.selvagam.com/api/v1`
 **API Version**: 1.0.0
 **Authentication**: JWT Bearer Token
+
+---
+
+## 📊 Dashboard APIs
+- `GET /dashboard/stats` - Comprehensive system statistics (counts, fleet, maintenance)
 
 ---
 
@@ -34,7 +43,15 @@
 - `POST /auth/driver/login`
 **Description**: Separate login endpoints for different user types to ensure security and role isolation.
 
-### 2. Profile by Phone
+### 2. Logout & Tokens
+- `POST /auth/logout` - Invalidate session and remove FCM token
+- `POST /fcm-tokens` - Register/Update device token
+
+### 3. Login Requests
+- `POST /auth/login-requests/{id}/respond` - Approve/Reject new device login
+- `GET /auth/login-requests/{id}` - Check status of pending request
+
+### 4. Profile by Phone
 **Endpoints**:
 - `GET /auth/admin/profile/phone/{phone}`
 - `GET /auth/parent/profile/phone/{phone}`
@@ -113,6 +130,29 @@
 - `POST /students/bulk-upgrade-class` - Move all students from one class to another
 - `POST /classes/promote-all` - Bulk increment all students' class (e.g., Class 9 → 10)
 - `POST /classes/demote-all` - Bulk decrement all students' class (Admin rollback)
+
+---
+
+## 📜 Notification History APIs
+- `POST /admin-parent-notifications` - Send & log notification
+- `GET /admin-parent-notifications` - List all history
+- `GET /admin-parent-notifications/student/{id}` - History for student
+- `GET /admin-parent-notifications/parent/{id}` - History for parent
+- `GET /admin-parent-notifications/admin/{id}` - History by admin
+
+---
+
+## 📱 Mobile App Versioning APIs
+- `POST /check-app-version` - Check if app needs force/optional update
+- `GET /app-versions` - List all configured versions (Admin)
+- `POST /app-versions` - Create new version config
+
+---
+
+## ⚠️ Error Handling APIs
+- `GET /error-handling` - List all system error logs
+- `GET /error-handling/{id}` - Specific error details
+- `DELETE /error-handling/{id}` - Remove error log
 
 ---
 
