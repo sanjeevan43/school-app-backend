@@ -299,9 +299,22 @@ async def get_admin(admin_id: str):
 
 @router.put("/admins/{admin_id}", response_model=AdminResponse, tags=["Admins"])
 async def update_admin(admin_id: str, admin_update: AdminUpdate):
-    """Update admin"""
+    """Update admin and refresh default password if name/phone changes"""
+    # Get current data to determine final name/phone
+    old_admin = execute_query("SELECT name, phone FROM admins WHERE admin_id = %s", (admin_id,), fetch_one=True)
+    if not old_admin:
+        raise HTTPException(status_code=404, detail="Admin not found")
+        
     update_fields = []
     values = []
+    
+    # Determine new values
+    final_name = admin_update.name if admin_update.name is not None else old_admin['name']
+    final_phone = admin_update.phone if admin_update.phone is not None else old_admin['phone']
+    
+    # Check if we should re-generate default password
+    # If name or phone changed and NO custom password provided
+    should_refresh_default = (admin_update.name is not None or admin_update.phone is not None) and not admin_update.password
     
     for field, value in admin_update.dict(exclude_unset=True).items():
         if field == "password" and value:
@@ -310,6 +323,11 @@ async def update_admin(admin_id: str, admin_update: AdminUpdate):
         elif field != "password" and value is not None:
             update_fields.append(f"{field} = %s")
             values.append(value)
+            
+    if should_refresh_default:
+        new_default = generate_default_password(final_name, final_phone)
+        update_fields.append("password_hash = %s")
+        values.append(get_password_hash(new_default))
     
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -317,10 +335,7 @@ async def update_admin(admin_id: str, admin_update: AdminUpdate):
     values.append(admin_id)
     query = f"UPDATE admins SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE admin_id = %s"
     
-    result = execute_query(query, tuple(values))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Admin not found")
-    
+    execute_query(query, tuple(values))
     return await get_admin(admin_id)
 
 @router.put("/admins/{admin_id}/status", response_model=AdminResponse, tags=["Admins"])
@@ -737,9 +752,13 @@ async def update_parent(parent_id: str, parent_update: ParentUpdate):
         if not old_parent:
             raise HTTPException(status_code=404, detail="Parent not found")
         
-        update_fields = []
-        values = []
+        # Determine new values
+        final_name = parent_update.name if parent_update.name is not None else old_parent['name']
+        final_phone = parent_update.phone if parent_update.phone is not None else old_parent['phone']
         
+        # Check if we should re-generate default password
+        should_refresh_default = (parent_update.name is not None or parent_update.phone is not None) and not parent_update.password
+
         for field, value in parent_update.dict(exclude_unset=True).items():
             if field == "password" and value:
                 update_fields.append("password_hash = %s")
@@ -748,13 +767,18 @@ async def update_parent(parent_id: str, parent_update: ParentUpdate):
                 update_fields.append(f"{field} = %s")
                 values.append(value)
         
+        if should_refresh_default:
+            new_default = generate_default_password(final_name, final_phone)
+            update_fields.append("password_hash = %s")
+            values.append(get_password_hash(new_default))
+
         if not update_fields:
             raise HTTPException(status_code=400, detail="No fields to update")
         
         values.append(parent_id)
         query = f"UPDATE parents SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE parent_id = %s"
         
-        result = execute_query(query, tuple(values))
+        execute_query(query, tuple(values))
         if result == 0:
             raise HTTPException(status_code=404, detail="Parent not found")
         
@@ -1125,9 +1149,21 @@ async def get_driver(driver_id: str):
 
 @router.put("/drivers/{driver_id}", response_model=DriverResponse, tags=["Drivers"])
 async def update_driver(driver_id: str, driver_update: DriverUpdate):
-    """Update driver"""
+    """Update driver and refresh default password if name/phone changes"""
+    # Get current data
+    old_driver = execute_query("SELECT name, phone FROM drivers WHERE driver_id = %s", (driver_id,), fetch_one=True)
+    if not old_driver:
+        raise HTTPException(status_code=404, detail="Driver not found")
+        
     update_fields = []
     values = []
+    
+    # Determine new values
+    final_name = driver_update.name if driver_update.name is not None else old_driver['name']
+    final_phone = driver_update.phone if driver_update.phone is not None else old_driver['phone']
+    
+    # Check if we should re-generate default password
+    should_refresh_default = (driver_update.name is not None or driver_update.phone is not None) and not driver_update.password
     
     for field, value in driver_update.dict(exclude_unset=True).items():
         if field == "password" and value:
@@ -1136,6 +1172,11 @@ async def update_driver(driver_id: str, driver_update: DriverUpdate):
         elif field != "password" and value is not None:
             update_fields.append(f"{field} = %s")
             values.append(value)
+            
+    if should_refresh_default:
+        new_default = generate_default_password(final_name, final_phone)
+        update_fields.append("password_hash = %s")
+        values.append(get_password_hash(new_default))
     
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -1143,10 +1184,7 @@ async def update_driver(driver_id: str, driver_update: DriverUpdate):
     values.append(driver_id)
     query = f"UPDATE drivers SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE driver_id = %s"
     
-    result = execute_query(query, tuple(values))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Driver not found")
-    
+    execute_query(query, tuple(values))
     return await get_driver(driver_id)
 
 @router.put("/drivers/{driver_id}/status", response_model=DriverResponse, tags=["Drivers"])
