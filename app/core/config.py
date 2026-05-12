@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     
     # Docs Authentication
     DOCS_USERNAME: str = "selvagamadmin"
-    DOCS_PASSWORD: str = "selvagam_admin"
+    DOCS_PASSWORD: str = "Selvagam@2025"
     
     class Config:
         env_file = ".env"
