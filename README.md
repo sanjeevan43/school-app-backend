@@ -112,6 +112,8 @@ Once running, access interactive documentation at:
 - **Swagger UI**: http://localhost:8080/docs
 - **ReDoc**: http://localhost:8080/redoc
 
+> **Note**: Both docs are protected via HTTP Basic Authentication. Use the `DOCS_USERNAME` and `DOCS_PASSWORD` configured in your `.env` file.
+
 ## 🔑 Key Endpoints
 
 ### Authentication

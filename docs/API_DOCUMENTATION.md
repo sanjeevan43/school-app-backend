@@ -346,6 +346,8 @@ Manual and automated notification endpoints. Requires `x-admin-key` for administ
 
 ---
 
-**Interactive Documentation**:
+**Interactive Documentation** (Protected via HTTP Basic Auth):
 - [Swagger UI](http://api.selvagam.com/docs)
 - [ReDoc](http://api.selvagam.com/redoc)
+
+> **Note**: Access requires the `DOCS_USERNAME` and `DOCS_PASSWORD` configured in the `.env` file.
