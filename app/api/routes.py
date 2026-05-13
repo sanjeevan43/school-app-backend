@@ -18,6 +18,7 @@ from app.notification_api.service import notification_service
 from app.services.cascade_updates import cascade_service
 from app.services.upload_service import upload_service
 from app.core.security import get_password_hash, generate_default_password
+from app.services.cleanup_service import cleanup_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -87,6 +88,15 @@ async def get_dashboard_stats():
     except Exception as e:
         logger.error(f"Dashboard stats error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch dashboard stats: {str(e)}")
+
+@router.post("/maintenance/cleanup-logs", tags=["Dashboard"])
+async def manual_cleanup_logs(days: int = 30):
+    """Manually trigger pruning of logs older than X days (default 30)"""
+    result = cleanup_service.prune_old_data(days=days)
+    if result:
+        return {"status": "success", "message": "Cleanup completed", "details": result}
+    else:
+        raise HTTPException(status_code=500, detail="Cleanup failed")
 
 # =====================================================
 # USER PROFILE & AUTHENTICATION

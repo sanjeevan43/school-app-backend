@@ -9,9 +9,12 @@ import uvicorn
 import os
 import logging
 import secrets
+import asyncio
+from app.services.cleanup_service import cleanup_service
 
 settings = get_settings()
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # FastAPI app
 app = FastAPI(
@@ -108,6 +111,26 @@ if not os.path.exists(settings.UPLOAD_DIR):
 
 # Mount static files
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+
+# Background Task for daily cleanup
+async def scheduled_cleanup():
+    """Run data pruning every 24 hours"""
+    while True:
+        try:
+            logger.info("Triggering scheduled data pruning...")
+            cleanup_service.prune_old_data(days=30)
+        except Exception as e:
+            logger.error(f"Scheduled cleanup error: {e}")
+        
+        # Wait for 24 hours (86400 seconds)
+        await asyncio.sleep(86400)
+
+@app.on_event("startup")
+async def on_startup():
+    """Actions to perform on startup"""
+    # Start the background cleanup task
+    asyncio.create_task(scheduled_cleanup())
+    logger.info("Startup complete: Scheduled cleanup task started.")
 
 # Root endpoint
 @app.get("/", include_in_schema=False)
