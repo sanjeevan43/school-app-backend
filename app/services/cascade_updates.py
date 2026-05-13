@@ -225,9 +225,21 @@ class CascadeUpdateService:
             logger.error(f"FCM cache update error for route {route_id}: {e}")
     
     def delete_cascades(self, table: str, record_id: str, record_data: Dict = None):
-        """Handle cascading deletes"""
+        """Handle cascading deletes and check for blocking dependencies"""
         try:
-            if table == "parents":
+            if table == "admins":
+                # Check if this admin has sent notifications
+                # We'll automatically delete them as they are just logs
+                execute_query("DELETE FROM admin_parent_notifications WHERE sent_by_admin_id = %s", (record_id,))
+                logger.info(f"Cleaned up notifications for admin {record_id}")
+
+            elif table == "parents":
+                # Check for students
+                students = execute_query("SELECT student_id, name FROM students WHERE parent_id = %s OR s_parent_id = %s", (record_id, record_id), fetch_all=True)
+                if students:
+                    student_names = ", ".join([s['name'] for s in students])
+                    raise ValueError(f"Cannot delete parent: Assigned to students ({student_names})")
+                
                 # Clean up FCM tokens
                 execute_query("DELETE FROM fcm_tokens WHERE parent_id = %s", (record_id,))
                 # Update routes where this parent's students were enrolled
@@ -235,13 +247,28 @@ class CascadeUpdateService:
                     self.update_parent_cascades(record_id, record_data)
                     
             elif table == "students":
-                # Clean up FCM tokens
+                # Clean up FCM tokens and notifications
                 execute_query("DELETE FROM fcm_tokens WHERE student_id = %s", (record_id,))
+                execute_query("DELETE FROM admin_parent_notifications WHERE student_id = %s", (record_id,))
                 # Update route caches
                 if record_data:
                     self.update_student_cascades(record_id, record_data)
                     
             elif table == "routes":
+                # Check for buses or route stops or students
+                buses = execute_query("SELECT registration_number FROM buses WHERE route_id = %s", (record_id,), fetch_all=True)
+                if buses:
+                    bus_nos = ", ".join([b['registration_number'] for b in buses])
+                    raise ValueError(f"Cannot delete route: Assigned to buses ({bus_nos})")
+                
+                students = execute_query("SELECT name FROM students WHERE pickup_route_id = %s OR drop_route_id = %s", (record_id, record_id), fetch_all=True)
+                if students:
+                    student_names = ", ".join([s['name'] for s in students])
+                    raise ValueError(f"Cannot delete route: Assigned to students ({student_names})")
+
+                # Clean up route stops (they are strictly part of the route)
+                execute_query("DELETE FROM route_stops WHERE route_id = %s", (record_id,))
+                
                 # Clean up route cache
                 execute_query("DELETE FROM route_stop_fcm_cache WHERE route_id = %s", (record_id,))
                 # Cancel active trips
@@ -251,12 +278,49 @@ class CascadeUpdateService:
                 )
                 
             elif table == "route_stops":
+                # Check if students are assigned to this stop
+                students = execute_query("SELECT name FROM students WHERE pickup_stop_id = %s OR drop_stop_id = %s", (record_id, record_id), fetch_all=True)
+                if students:
+                    student_names = ", ".join([s['name'] for s in students])
+                    raise ValueError(f"Cannot delete stop: Assigned to students ({student_names})")
+
                 # Update route cache
                 if record_data and record_data.get('route_id'):
                     self.update_route_fcm_cache(record_data['route_id'])
             
+            elif table == "drivers":
+                # Check for buses or active trips
+                buses = execute_query("SELECT registration_number FROM buses WHERE driver_id = %s", (record_id,), fetch_all=True)
+                if buses:
+                    bus_nos = ", ".join([b['registration_number'] for b in buses])
+                    raise ValueError(f"Cannot delete driver: Assigned to buses ({bus_nos})")
+                
+                # Check for active/ongoing trips
+                trips = execute_query("SELECT trip_id FROM trips WHERE driver_id = %s AND status IN ('NOT_STARTED', 'ONGOING')", (record_id,), fetch_all=True)
+                if trips:
+                    raise ValueError("Cannot delete driver: Has active or upcoming trips")
+
+                # Clean up live locations
+                execute_query("DELETE FROM driver_live_locations WHERE driver_id = %s", (record_id,))
+                execute_query("DELETE FROM driver_live_location WHERE driver_id = %s", (record_id,)) # Check both variants found in deps
+
+            elif table == "buses":
+                # Check for active/ongoing trips
+                trips = execute_query("SELECT trip_id FROM trips WHERE bus_id = %s AND status IN ('NOT_STARTED', 'ONGOING')", (record_id,), fetch_all=True)
+                if trips:
+                    raise ValueError("Cannot delete bus: Has active or upcoming trips")
+
+            elif table == "classes":
+                # Check for students
+                students = execute_query("SELECT name FROM students WHERE class_id = %s", (record_id,), fetch_all=True)
+                if students:
+                    student_names = ", ".join([s['name'] for s in students])
+                    raise ValueError(f"Cannot delete class: Assigned to students ({student_names})")
+            
             logger.info(f"Completed delete cascades for {table} {record_id}")
             return True
+        except ValueError as ve:
+            raise ve
         except Exception as e:
             logger.error(f"Delete cascade error for {table} {record_id}: {e}")
             return False

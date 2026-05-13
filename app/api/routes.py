@@ -351,12 +351,21 @@ async def update_admin_status(admin_id: str, status_update: StatusUpdate):
 
 @router.delete("/admins/{admin_id}", tags=["Admins"])
 async def delete_admin(admin_id: str):
-    """Delete admin"""
-    query = "DELETE FROM admins WHERE admin_id = %s"
-    result = execute_query(query, (admin_id,))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Admin not found")
-    return {"message": "Admin deleted successfully"}
+    """Delete admin with cleanup"""
+    try:
+        # Perform cascade cleanup before delete
+        cascade_service.delete_cascades("admins", admin_id)
+        
+        query = "DELETE FROM admins WHERE admin_id = %s"
+        result = execute_query(query, (admin_id,))
+        if result == 0:
+            raise HTTPException(status_code=404, detail="Admin not found")
+        return {"message": "Admin deleted successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error deleting admin: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete admin")
 
 @router.patch("/admins/{admin_id}/password", tags=["Admins"])
 async def patch_admin_password(admin_id: str, password_data: PasswordUpdate):
@@ -989,6 +998,8 @@ async def delete_parent(parent_id: str):
         return {"message": "Parent deleted successfully"}
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Delete parent error: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete parent")
@@ -1266,12 +1277,21 @@ async def get_all_driver_fcm_tokens():
 
 @router.delete("/drivers/{driver_id}", tags=["Drivers"])
 async def delete_driver(driver_id: str):
-    """Delete driver"""
-    query = "DELETE FROM drivers WHERE driver_id = %s"
-    result = execute_query(query, (driver_id,))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Driver not found")
-    return {"message": "Driver deleted successfully"}
+    """Delete driver with cleanup"""
+    try:
+        # Perform cascade cleanup
+        cascade_service.delete_cascades("drivers", driver_id)
+        
+        query = "DELETE FROM drivers WHERE driver_id = %s"
+        result = execute_query(query, (driver_id,))
+        if result == 0:
+            raise HTTPException(status_code=404, detail="Driver not found")
+        return {"message": "Driver deleted successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error deleting driver: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete driver")
 
 @router.patch("/drivers/{driver_id}/password", tags=["Drivers"])
 async def patch_driver_password(driver_id: str, password_data: PasswordUpdate):
@@ -1458,6 +1478,8 @@ async def delete_route(route_id: str):
         return {"message": "Route deleted successfully"}
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Delete route error: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete route")
@@ -1758,6 +1780,8 @@ async def delete_route_stop(stop_id: str):
         return {"message": "Route stop deleted and route shifted successfully"}
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Delete route stop error: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete route stop")
@@ -1976,12 +2000,21 @@ async def get_bus_by_driver(driver_id: str):
 
 @router.delete("/buses/{bus_id}", tags=["Buses"])
 async def delete_bus(bus_id: str):
-    """Delete bus"""
-    query = "DELETE FROM buses WHERE bus_id = %s"
-    result = execute_query(query, (bus_id,))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Bus not found")
-    return {"message": "Bus deleted successfully"}
+    """Delete bus with cleanup"""
+    try:
+        # Perform cascade cleanup
+        cascade_service.delete_cascades("buses", bus_id)
+        
+        query = "DELETE FROM buses WHERE bus_id = %s"
+        result = execute_query(query, (bus_id,))
+        if result == 0:
+            raise HTTPException(status_code=404, detail="Bus not found")
+        return {"message": "Bus deleted successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error deleting bus: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete bus")
 
 # =====================================================
 # CLASS ENDPOINTS
@@ -2067,12 +2100,21 @@ async def update_class_status(class_id: str, status_update: StatusUpdate):
 
 @router.delete("/classes/{class_id}", tags=["Classes"])
 async def delete_class(class_id: str):
-    """Delete class"""
-    query = "DELETE FROM classes WHERE class_id = %s"
-    result = execute_query(query, (class_id,))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Class not found")
-    return {"message": "Class deleted successfully"}
+    """Delete class with cleanup"""
+    try:
+        # Perform cascade cleanup
+        cascade_service.delete_cascades("classes", class_id)
+        
+        query = "DELETE FROM classes WHERE class_id = %s"
+        result = execute_query(query, (class_id,))
+        if result == 0:
+            raise HTTPException(status_code=404, detail="Class not found")
+        return {"message": "Class deleted successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error deleting class: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete class")
 
 @router.get("/classes/{class_id}/fcm-tokens", tags=["Classes"])
 async def get_class_fcm_tokens(class_id: str):
@@ -2743,6 +2785,8 @@ async def delete_student(student_id: str):
         return {"message": "Student deleted successfully"}
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Delete student error: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete student")
