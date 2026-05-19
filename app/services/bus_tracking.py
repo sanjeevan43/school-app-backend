@@ -40,7 +40,7 @@ class BusTrackingService:
             JOIN route_stops rs ON s.pickup_stop_id = rs.stop_id
             LEFT JOIN fcm_tokens ft ON s.student_id = ft.student_id
             WHERE s.pickup_route_id = %s AND rs.pickup_stop_order = %s 
-            AND s.transport_status = 'ACTIVE' AND s.student_status = 'CURRENT'
+            AND s.transport_status = 'ACTIVE' AND s.student_status IN ('CURRENT', 'ACTIVE')
             AND s.is_transport_user = True
             """
         else:  # DROP
@@ -50,7 +50,7 @@ class BusTrackingService:
             JOIN route_stops rs ON s.drop_stop_id = rs.stop_id
             LEFT JOIN fcm_tokens ft ON s.student_id = ft.student_id
             WHERE s.drop_route_id = %s AND rs.drop_stop_order = %s 
-            AND s.transport_status = 'ACTIVE' AND s.student_status = 'CURRENT'
+            AND s.transport_status = 'ACTIVE' AND s.student_status IN ('CURRENT', 'ACTIVE')
             AND s.is_transport_user = True
             """
         
@@ -67,21 +67,24 @@ class BusTrackingService:
             FROM students s
             JOIN route_stops rs ON s.pickup_stop_id = rs.stop_id
             LEFT JOIN fcm_tokens ft ON s.student_id = ft.student_id
-            WHERE s.pickup_route_id = %s AND rs.location = %s 
-            AND s.transport_status = 'ACTIVE' AND s.student_status = 'CURRENT'
+            WHERE s.pickup_route_id = %s 
+            AND (rs.location = %s OR ((rs.location IS NULL OR rs.location = '') AND rs.stop_name = %s))
+            AND s.transport_status = 'ACTIVE' AND s.student_status IN ('CURRENT', 'ACTIVE')
             AND s.is_transport_user = True
             """
+            return execute_query(query, (route_id, location_name, location_name), fetch_all=True) or []
         else:  # DROP
             query = """
             SELECT s.student_id, s.name, ft.fcm_token, rs.stop_name
             FROM students s
             JOIN route_stops rs ON s.drop_stop_id = rs.stop_id
             LEFT JOIN fcm_tokens ft ON s.student_id = ft.student_id
-            WHERE s.drop_route_id = %s AND rs.location = %s 
-            AND s.transport_status = 'ACTIVE' AND s.student_status = 'CURRENT'
+            WHERE s.drop_route_id = %s 
+            AND (rs.location = %s OR ((rs.location IS NULL OR rs.location = '') AND rs.stop_name = %s))
+            AND s.transport_status = 'ACTIVE' AND s.student_status IN ('CURRENT', 'ACTIVE')
             AND s.is_transport_user = True
             """
-        return execute_query(query, (route_id, location_name), fetch_all=True) or []
+        return execute_query(query, (route_id, location_name, location_name), fetch_all=True) or []
     
     def get_parent_tokens_for_students(self, student_ids: List[str]) -> List[str]:
         """Get parent FCM tokens for given students"""
@@ -188,7 +191,16 @@ class BusTrackingService:
             
             # --- Smart Lookahead Stop Logic (Handles Skips) ---
             # Consider the next 5 stops, but EXCLUDE any that are explicitly marked as "skipped"
-            skipped_list = json.loads(trip['skipped_stops']) if trip.get('skipped_stops') else []
+            skipped_raw = trip.get('skipped_stops')
+            if isinstance(skipped_raw, list):
+                skipped_list = skipped_raw
+            elif isinstance(skipped_raw, str):
+                try:
+                    skipped_list = json.loads(skipped_raw)
+                except Exception:
+                    skipped_list = []
+            else:
+                skipped_list = []
             
             lookahead_stops = [s for s in stops if s['stop_order'] > current_stop_order and s['stop_order'] not in skipped_list][:5]
             
@@ -349,7 +361,16 @@ class BusTrackingService:
             if not result:
                 return {"success": False, "message": "Trip not found"}
 
-            skipped = json.loads(result['skipped_stops']) if result.get('skipped_stops') else []
+            skipped_raw = result.get('skipped_stops')
+            if isinstance(skipped_raw, list):
+                skipped = skipped_raw
+            elif isinstance(skipped_raw, str):
+                try:
+                    skipped = json.loads(skipped_raw)
+                except Exception:
+                    skipped = []
+            else:
+                skipped = []
             
             # 2. Add new stop order if not already skipped
             if stop_order not in skipped:
@@ -397,6 +418,16 @@ class BusTrackingService:
             
             # 2. Get stop name for logging/response
             order_field = "pickup_stop_order" if trip['trip_type'] == "PICKUP" else "drop_stop_order"
+            
+            # Fetch all stops to find names and resolve NameError
+            stops_query = f"""
+            SELECT stop_id, stop_name, location, latitude, longitude, {order_field} as stop_order
+            FROM route_stops 
+            WHERE route_id = %s
+            ORDER BY {order_field}
+            """
+            stops = execute_query(stops_query, (trip['route_id'],), fetch_all=True) or []
+            
             stop_query = f"SELECT stop_name FROM route_stops WHERE route_id = %s AND {order_field} = %s"
             skipped_stop = execute_query(stop_query, (trip['route_id'], target_skip_order), fetch_one=True)
             
@@ -483,7 +514,7 @@ class BusTrackingService:
             LEFT JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
             LEFT JOIN parents p ON ft.parent_id = p.parent_id
             WHERE rs.route_id = %s AND s.transport_status = 'ACTIVE' 
-            AND s.student_status = 'CURRENT' AND s.is_transport_user = True
+            AND s.student_status IN ('CURRENT', 'ACTIVE') AND s.is_transport_user = True
             AND ft.fcm_token IS NOT NULL
             GROUP BY rs.stop_id, rs.stop_name, rs.pickup_stop_order, rs.drop_stop_order
             """

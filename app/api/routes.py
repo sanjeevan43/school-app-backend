@@ -519,18 +519,19 @@ async def create_admin_parent_notification(notification: AdminParentNotification
             
         elif notification.recipient_type == "LOCATION" and location_name:
             # Send to all parents at this location name on a specific route (if provided)
-            params = [location_name]
+            params = [location_name, location_name]
             route_filter = ""
             if route_id:
                 route_filter = "AND (s.pickup_route_id = %s OR s.drop_route_id = %s)"
-                params = [route_id, route_id, location_name]
+                params = [location_name, location_name, route_id, route_id]
                 
             query_tokens = f"""
             SELECT DISTINCT ft.fcm_token 
             FROM fcm_tokens ft
             JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
             JOIN route_stops rs ON (s.pickup_stop_id = rs.stop_id OR s.drop_stop_id = rs.stop_id)
-            WHERE rs.location = %s {route_filter} AND ft.fcm_token IS NOT NULL
+            WHERE (rs.location = %s OR ((rs.location IS NULL OR rs.location = '') AND rs.stop_name = %s)) {route_filter} 
+            AND ft.fcm_token IS NOT NULL
             """
             token_results = execute_query(query_tokens, tuple(params), fetch_all=True)
             target_tokens = [t['fcm_token'] for t in token_results]
@@ -589,7 +590,7 @@ async def get_notifications_by_parent(parent_id: str):
         (n.recipient_type = 'CLASS' AND n.class_id = s.class_id) OR
         (n.recipient_type = 'LOCATION' AND EXISTS (
             SELECT 1 FROM route_stops rs 
-            WHERE rs.location = n.location_name 
+            WHERE (rs.location = n.location_name OR ((rs.location IS NULL OR rs.location = '') AND rs.stop_name = n.location_name))
             AND (rs.stop_id = s.pickup_stop_id OR rs.stop_id = s.drop_stop_id)
         ))
     )
@@ -3325,9 +3326,10 @@ async def get_fcm_tokens_by_location(location: str):
     FROM fcm_tokens ft
     JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
     JOIN route_stops rs ON (s.pickup_stop_id = rs.stop_id OR s.drop_stop_id = rs.stop_id)
-    WHERE rs.location = %s AND ft.fcm_token IS NOT NULL
+    WHERE (rs.location = %s OR ((rs.location IS NULL OR rs.location = '') AND rs.stop_name = %s)) 
+    AND ft.fcm_token IS NOT NULL
     """
-    token_results = execute_query(query, (location,), fetch_all=True)
+    token_results = execute_query(query, (location, location), fetch_all=True)
     token_map = {row['fcm_token']: row['fcm_id'] for row in token_results} if token_results else {}
     tokens = [{"fcm_id": fid, "fcm_token": tk} for tk, fid in token_map.items()]
     return {"fcm_tokens": tokens, "count": len(tokens)}
@@ -3404,7 +3406,7 @@ async def get_fcm_tokens_by_route(route_id: str):
         LEFT JOIN students s ON (
             (rs.stop_id = s.pickup_stop_id AND s.pickup_route_id = rs.route_id) OR
             (rs.stop_id = s.drop_stop_id AND s.drop_route_id = rs.route_id)
-        ) AND s.transport_status = 'ACTIVE' AND s.student_status = 'CURRENT' AND s.is_transport_user = True
+        ) AND s.transport_status = 'ACTIVE' AND s.student_status IN ('CURRENT', 'ACTIVE') AND s.is_transport_user = True
         LEFT JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
         LEFT JOIN parents p ON ft.parent_id = p.parent_id
         WHERE rs.route_id = %s
@@ -3427,7 +3429,7 @@ async def get_fcm_tokens_by_route(route_id: str):
         LEFT JOIN parents p ON ft.parent_id = p.parent_id
         WHERE (s.pickup_route_id = %s OR s.drop_route_id = %s)
         AND s.pickup_stop_id IS NULL AND s.drop_stop_id IS NULL
-        AND s.transport_status = 'ACTIVE' AND s.student_status = 'CURRENT' AND s.is_transport_user = True
+        AND s.transport_status = 'ACTIVE' AND s.student_status IN ('CURRENT', 'ACTIVE') AND s.is_transport_user = True
         """
         unassigned_results = execute_query(unassigned_query, (route_id, route_id), fetch_all=True)
 
@@ -3507,7 +3509,7 @@ async def get_fcm_tokens_by_stop(stop_id: str):
         LEFT JOIN students s ON (
             (rs.stop_id = s.pickup_stop_id) OR
             (rs.stop_id = s.drop_stop_id)
-        ) AND s.transport_status = 'ACTIVE' AND s.student_status = 'CURRENT' AND s.is_transport_user = True
+        ) AND s.transport_status = 'ACTIVE' AND s.student_status IN ('CURRENT', 'ACTIVE') AND s.is_transport_user = True
         LEFT JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
         LEFT JOIN parents p ON ft.parent_id = p.parent_id
         WHERE rs.stop_id = %s 
@@ -3602,7 +3604,7 @@ async def send_custom_notification(notification: NotificationRequest):
             SELECT s.student_id FROM students s
             WHERE (s.pickup_stop_id = %s OR s.drop_stop_id = %s)
             AND s.transport_status = 'ACTIVE'
-            AND s.student_status = 'CURRENT'
+            AND s.student_status IN ('CURRENT', 'ACTIVE')
             AND s.is_transport_user = True
             """
             students = execute_query(students_query, (notification.stop_id, notification.stop_id), fetch_all=True)
@@ -3611,7 +3613,7 @@ async def send_custom_notification(notification: NotificationRequest):
             SELECT s.student_id FROM students s
             WHERE (s.pickup_route_id = %s OR s.drop_route_id = %s)
             AND s.transport_status = 'ACTIVE'
-            AND s.student_status = 'CURRENT'
+            AND s.student_status IN ('CURRENT', 'ACTIVE')
             AND s.is_transport_user = True
             """
             students = execute_query(students_query, (trip['route_id'], trip['route_id']), fetch_all=True)

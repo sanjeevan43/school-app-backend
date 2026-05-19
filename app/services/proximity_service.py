@@ -30,7 +30,7 @@ class ProximityTrackingService:
             JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
             WHERE (s.pickup_route_id = %s OR s.drop_route_id = %s)
             AND s.transport_status = 'ACTIVE'
-            AND s.student_status = 'CURRENT'
+            AND s.student_status IN ('CURRENT', 'ACTIVE')
             AND s.is_transport_user = 1
             AND ft.fcm_token IS NOT NULL
             """
@@ -117,7 +117,7 @@ class ProximityTrackingService:
             WHERE (s.pickup_stop_id = %s OR s.drop_stop_id = %s)
             AND (s.pickup_route_id = %s OR s.drop_route_id = %s)
             AND s.transport_status = 'ACTIVE'
-            AND s.student_status = 'CURRENT'
+            AND s.student_status IN ('CURRENT', 'ACTIVE')
             AND s.is_transport_user = 1
             AND ft.fcm_token IS NOT NULL
             """

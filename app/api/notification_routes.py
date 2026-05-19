@@ -491,18 +491,19 @@ async def send_location_notification(
         FROM fcm_tokens ft
         JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
         JOIN route_stops rs ON (s.pickup_stop_id = rs.stop_id OR s.drop_stop_id = rs.stop_id)
-        WHERE (s.pickup_route_id = %s OR s.drop_route_id = %s) AND rs.location = %s
+        WHERE (s.pickup_route_id = %s OR s.drop_route_id = %s) 
+        AND (rs.location = %s OR ((rs.location IS NULL OR rs.location = '') AND rs.stop_name = %s))
         """
-        params = (route_id, route_id, location_name)
+        params = (route_id, route_id, location_name, location_name)
     else:
         query = """
         SELECT DISTINCT ft.fcm_token 
         FROM fcm_tokens ft
         JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
         JOIN route_stops rs ON (s.pickup_stop_id = rs.stop_id OR s.drop_stop_id = rs.stop_id)
-        WHERE rs.location = %s
+        WHERE (rs.location = %s OR ((rs.location IS NULL OR rs.location = '') AND rs.stop_name = %s))
         """
-        params = (location_name,)
+        params = (location_name, location_name)
 
     tokens = execute_query(query, params, fetch_all=True)
     if not tokens:
