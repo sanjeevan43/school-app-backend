@@ -1495,6 +1495,31 @@ async def delete_route(route_id: str):
         logger.error(f"Delete route error: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete route")
 
+@router.post("/routes/bulk", response_model=BulkCreateResponse, tags=["Routes"])
+async def bulk_create_routes(bulk_data: BulkRouteCreate):
+    """Bulk create multiple routes in a single request (JSON)"""
+    results = {
+        "total": len(bulk_data.routes),
+        "success": 0,
+        "failed": 0,
+        "errors": []
+    }
+    
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            for route in bulk_data.routes:
+                try:
+                    route_id = str(uuid.uuid4())
+                    query = "INSERT INTO routes (route_id, name) VALUES (%s, %s)"
+                    cursor.execute(query, (route_id, route.name))
+                    
+                    results["success"] += 1
+                except Exception as e:
+                    results["failed"] += 1
+                    results["errors"].append({"name": route.name, "error": str(e)})
+    
+    return results
+
 # =====================================================
 # ROUTE STOP ENDPOINTS
 # =====================================================
@@ -1798,6 +1823,57 @@ async def delete_route_stop(stop_id: str):
         raise HTTPException(status_code=500, detail="Failed to delete route stop")
 
 # Removed _reorder_route_stops and manual_reorder_route since shifting is now transactional and robust.
+
+@router.post("/route-stops/bulk", response_model=BulkCreateResponse, tags=["Route Stops"])
+async def bulk_create_route_stops(bulk_data: BulkRouteStopCreate):
+    """Bulk create multiple route stops in a single request (JSON).
+    Each stop must include route_id, stop_name, pickup_stop_order, and drop_stop_order.
+    Stops are inserted directly without auto-shifting — ensure orders are correct in the payload."""
+    results = {
+        "total": len(bulk_data.stops),
+        "success": 0,
+        "failed": 0,
+        "errors": []
+    }
+    
+    affected_routes = set()
+    
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            for stop in bulk_data.stops:
+                try:
+                    # Validate route exists
+                    cursor.execute("SELECT route_id FROM routes WHERE route_id = %s", (stop.route_id,))
+                    route = cursor.fetchone()
+                    if not route:
+                        raise ValueError(f"Route {stop.route_id} not found")
+                    
+                    stop_id = str(uuid.uuid4())
+                    query = """
+                    INSERT INTO route_stops (stop_id, route_id, stop_name, location, latitude, longitude, 
+                                           pickup_stop_order, drop_stop_order)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """
+                    cursor.execute(query, (
+                        stop_id, stop.route_id, stop.stop_name, stop.location,
+                        stop.latitude, stop.longitude,
+                        stop.pickup_stop_order, stop.drop_stop_order
+                    ))
+                    
+                    affected_routes.add(stop.route_id)
+                    results["success"] += 1
+                except Exception as e:
+                    results["failed"] += 1
+                    results["errors"].append({"stop_name": stop.stop_name, "route_id": stop.route_id, "error": str(e)})
+    
+    # Rebuild FCM cache for all affected routes
+    for route_id in affected_routes:
+        try:
+            cascade_service.update_route_fcm_cache(route_id)
+        except Exception as e:
+            logger.warning(f"Failed to update FCM cache for route {route_id}: {e}")
+    
+    return results
 
 # =====================================================
 # BUS ENDPOINTS

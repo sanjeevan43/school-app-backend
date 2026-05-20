@@ -264,6 +264,9 @@ class RouteBase(BaseModel):
 class RouteCreate(RouteBase):
     pass
 
+class BulkRouteCreate(BaseModel):
+    routes: List[RouteCreate]
+
 class RouteUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
     routes_active_status: Optional[UserStatus] = None
@@ -382,6 +385,9 @@ class RouteStopBase(BaseModel):
 class RouteStopCreate(RouteStopBase):
     pass
 
+class BulkRouteStopCreate(BaseModel):
+    stops: List[RouteStopCreate]
+
 class RouteStopUpdate(BaseModel):
     stop_name: Optional[str] = Field(None, max_length=100)
     location: Optional[str] = Field(None, max_length=100)
@@ -405,28 +411,28 @@ class RouteStopResponse(BaseModel):
 
 # Student Models
 class StudentCreate(BaseModel):
-    parent_id: str
+    parent_id: Optional[str] = None
     s_parent_id: Optional[str] = None
     name: str = Field(..., max_length=100)
     gender: Gender
     dob: Optional[date] = None
     study_year: str = Field(..., max_length=20)
     class_id: Optional[str] = None
-    pickup_route_id: str
-    drop_route_id: str
-    pickup_stop_id: str
-    drop_stop_id: str
+    pickup_route_id: Optional[str] = None
+    drop_route_id: Optional[str] = None
+    pickup_stop_id: Optional[str] = None
+    drop_stop_id: Optional[str] = None
     emergency_contact: Optional[int] = Field(None, description="Emergency contact number")
     student_photo_url: Optional[str] = Field(None, max_length=200)
     is_transport_user: bool = True
     student_status: StudentStatus = StudentStatus.CURRENT
     transport_status: TransportStatus = TransportStatus.ACTIVE
 
-    @field_validator('s_parent_id', mode='before')
+    @field_validator('parent_id', 's_parent_id', 'class_id', 'pickup_route_id', 'drop_route_id', 'pickup_stop_id', 'drop_stop_id', mode='before')
     @classmethod
-    def validate_s_parent_id(cls, v):
-        """Convert invalid s_parent_id values to None"""
-        if v in [None, "", "string", "null"]:
+    def sanitize_id_fields(cls, v):
+        """Convert empty strings and placeholder values to None"""
+        if v in [None, "", "string", "null", "undefined"]:
             return None
         return v
     
@@ -435,6 +441,14 @@ class StudentCreate(BaseModel):
     def validate_photo_url(cls, v):
         """Convert placeholder values to None"""
         if v in [None, "", "string", "null"]:
+            return None
+        return v
+
+    @field_validator('emergency_contact', mode='before')
+    @classmethod
+    def sanitize_emergency_contact(cls, v):
+        """Convert 0 or empty to None"""
+        if v in [None, 0, "", "0"]:
             return None
         return v
 
@@ -496,17 +510,17 @@ class BulkPromoteResponse(BaseModel):
 
 class StudentResponse(BaseModel):
     student_id: str
-    parent_id: str
+    parent_id: Optional[str] = None
     s_parent_id: Optional[str] = None
     name: str
     gender: Gender
     dob: Optional[date] = None
     study_year: str
     class_id: Optional[str] = None
-    pickup_route_id: str
-    drop_route_id: str
-    pickup_stop_id: str
-    drop_stop_id: str
+    pickup_route_id: Optional[str] = None
+    drop_route_id: Optional[str] = None
+    pickup_stop_id: Optional[str] = None
+    drop_stop_id: Optional[str] = None
     emergency_contact: Optional[int] = None
     student_photo_url: Optional[str] = None
     student_status: StudentStatus
