@@ -11,7 +11,7 @@ import logging
 import secrets
 import asyncio
 from app.services.cleanup_service import cleanup_service
-
+from app.core.firewall import FirewallMiddleware
 settings = get_settings()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -96,6 +96,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add our custom FirewallMiddleware
+app.add_middleware(FirewallMiddleware, allowed_origins=origins)
+
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router as main_router
