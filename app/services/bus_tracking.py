@@ -292,24 +292,27 @@ class BusTrackingService:
                             unique_locs_ahead.append(loc)
                             seen_locs.add(loc)
 
-                    # B. Approaching Notification (Next Unique Location)
-                    if len(unique_locs_ahead) > 0:
-                        next_loc = unique_locs_ahead[0]
-                        students_approaching = self.get_students_for_location(trip['route_id'], next_loc, trip['trip_type'])
-                        if students_approaching:
-                            title = "🚌 Bus Approaching"
-                            message = f"The bus has reached {current_loc_name} and will arrive at {next_loc} soon."
-                            await self._broadcast_helper(students_approaching, title, message, {"trip_id": trip_id, "location": next_loc, "status": "APPROACHING"}, message_type="audio")
-                            self._log_notification(title, message, trip['route_id'], next_loc)
-
-                    # C. Nearby Notification (Subsequent 2-4 Unique Locations)
-                    for i in range(1, min(len(unique_locs_ahead), 5)):
+                    # B. Upcoming Stops Notifications (Next 4 Unique Locations)
+                    for i in range(min(len(unique_locs_ahead), 4)):
                         future_loc = unique_locs_ahead[i]
-                        students_nearby = self.get_students_for_location(trip['route_id'], future_loc, trip['trip_type'])
-                        if students_nearby:
-                            title = "🚌 Bus Nearby"
-                            message = f"The bus is approaching {future_loc}. Please be ready."
-                            await self._broadcast_helper(students_nearby, title, message, {"trip_id": trip_id, "location": future_loc, "status": "UPCOMING"}, message_type="audio")
+                        students_ahead = self.get_students_for_location(trip['route_id'], future_loc, trip['trip_type'])
+                        if students_ahead:
+                            if i == 0:
+                                title = "🚌 Bus Approaching"
+                                message = f"The bus has reached {current_loc_name} and will arrive at {future_loc} soon."
+                                status_val = "APPROACHING"
+                            else:
+                                title = "🚌 Bus Update"
+                                message = f"The bus has reached {current_loc_name}. Please be ready for your stop."
+                                status_val = "UPCOMING"
+
+                            await self._broadcast_helper(
+                                students_ahead, 
+                                title, 
+                                message, 
+                                {"trip_id": trip_id, "location": future_loc, "status": status_val}, 
+                                message_type="audio"
+                            )
                             self._log_notification(title, message, trip['route_id'], future_loc)
 
 
