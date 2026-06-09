@@ -34,6 +34,8 @@ def mock_database(mocker, mock_db_connection, mock_db_cursor):
     get_db_mock.return_value = get_db_context
     
     mocker.patch("app.core.database.get_db", get_db_mock)
+    mocker.patch("app.api.routes.get_db", get_db_mock)
+    mocker.patch("app.services.cascade_updates.get_db", get_db_mock)
     
     # Mock execute_query
     def mock_execute_query(query, params=None, fetch_one=False, fetch_all=False):
@@ -45,8 +47,18 @@ def mock_database(mocker, mock_db_connection, mock_db_cursor):
             return mock_db_cursor.rowcount
 
     mocker.patch("app.core.database.execute_query", side_effect=mock_execute_query)
+    mocker.patch("app.api.routes.execute_query", side_effect=mock_execute_query)
+    mocker.patch("app.services.cascade_updates.execute_query", side_effect=mock_execute_query)
+    
+    # Force DEBUG=False during tests
+    from app.core.config import get_settings
+    settings = get_settings()
+    old_debug = settings.DEBUG
+    settings.DEBUG = False
     
     yield
+    
+    settings.DEBUG = old_debug
     
 @pytest.fixture(autouse=True)
 def mock_firebase(mocker):

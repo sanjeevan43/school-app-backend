@@ -46,9 +46,19 @@ app = FastAPI(
     }
 )
 
-security = HTTPBasic()
+from typing import Optional
 
-def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
+security = HTTPBasic(auto_error=False)
+
+def get_current_username(credentials: Optional[HTTPBasicCredentials] = Depends(security)):
+    if settings.DEBUG:
+        return "developer"
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
     current_username_bytes = credentials.username.encode("utf8")
     correct_username_bytes = settings.DOCS_USERNAME.encode("utf8")
     is_correct_username = secrets.compare_digest(
@@ -68,15 +78,15 @@ def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
     return credentials.username
 
 @app.get("/docs", include_in_schema=False)
-async def get_swagger_documentation(username: str = Depends(get_current_username)):
+async def get_swagger_documentation(username: Optional[str] = Depends(get_current_username)):
     return get_swagger_ui_html(openapi_url="/openapi.json", title="docs")
 
 @app.get("/redoc", include_in_schema=False)
-async def get_redoc_documentation(username: str = Depends(get_current_username)):
+async def get_redoc_documentation(username: Optional[str] = Depends(get_current_username)):
     return get_redoc_html(openapi_url="/openapi.json", title="redoc")
 
 @app.get("/openapi.json", include_in_schema=False)
-async def openapi(username: str = Depends(get_current_username)):
+async def openapi(username: Optional[str] = Depends(get_current_username)):
     return JSONResponse(app.openapi())
 
 # Configure CORS

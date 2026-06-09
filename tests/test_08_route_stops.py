@@ -67,6 +67,7 @@ def test_update_route_stop(client: TestClient, mock_db_cursor):
 
 def test_delete_route_stop(client: TestClient, mock_db_cursor):
     mock_db_cursor.rowcount = 1
+    mock_db_cursor.fetchone.return_value = mock_route_stop_data()
     response = client.delete("/api/v1/route-stops/stop123", headers=HEADERS)
     assert response.status_code == 200
     data = response.json()

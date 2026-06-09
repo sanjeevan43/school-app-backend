@@ -6,6 +6,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+from app.core.config import get_settings
+settings = get_settings()
+
 class FirewallMiddleware(BaseHTTPMiddleware):
     """
     Firewall middleware to block direct browser access and Swagger docs,
@@ -23,13 +26,16 @@ class FirewallMiddleware(BaseHTTPMiddleware):
         ]
 
     async def dispatch(self, request: Request, call_next):
+        if settings.DEBUG:
+            return await call_next(request)
+
         path = request.url.path
         user_agent = request.headers.get("user-agent", "").lower()
         origin = request.headers.get("origin")
         referer = request.headers.get("referer", "")
         
         # 1. Block Swagger & OpenAPI Docs explicitly
-        if path in ["/docs", "/redoc", "/openapi.json"]:
+        if not settings.DEBUG and path in ["/docs", "/redoc", "/openapi.json"]:
             logger.warning(f"Blocked attempt to access docs at {path}")
             return JSONResponse(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -42,6 +48,9 @@ class FirewallMiddleware(BaseHTTPMiddleware):
         is_browser = "mozilla" in user_agent or "chrome" in user_agent or "safari" in user_agent
 
         if is_browser:
+            # If settings.DEBUG is True and accessing docs or openapi, allow it directly
+            if settings.DEBUG and path in ["/docs", "/redoc", "/openapi.json"]:
+                return await call_next(request)
             # Check if it's a valid CORS request or referred by our websites
             is_allowed_origin = False
             if origin and any(origin.startswith(allowed) for allowed in self.allowed_origins):
