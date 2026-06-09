@@ -53,17 +53,21 @@ def test_get_dashboard_stats(client, mock_db_cursor):
 
 def test_error_handling_dummy(client, mock_db_cursor):
     """
-    Dummy test for /error-handling as requested, 
-    verifying it returns 404 if it does not exist 
-    or appropriate status code if it does.
+    GET /api/v1/error-handling returns List[ErrorHandlingResponse].
+    ErrorHandlingResponse requires: error_id (str), created_at (datetime).
+    Providing correct mock data so Pydantic serialisation succeeds → 200.
     """
-    mock_db_cursor.fetchall.return_value = [{
-        "error_id": "err123",
-        "error_type": "DatabaseError",
-        "message": "Access denied",
-        "stack_trace": "...",
-        "resolved": False,
-        "created_at": "2023-01-01T00:00:00"
-    }]
+    mock_db_cursor.fetchall.return_value = [
+        {
+            "error_id": "err-001",
+            "error_type": "DB_ERROR",
+            "error_code": 500,
+            "error_description": "Test error",
+            "created_at": "2023-01-01T00:00:00"
+        }
+    ]
     response = client.get("/api/v1/error-handling", headers=HEADERS)
-    assert response.status_code in [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND]
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert isinstance(data, list)
+    assert data[0]["error_id"] == "err-001"
