@@ -41,7 +41,7 @@ class BusTrackingService:
             LEFT JOIN fcm_tokens ft ON s.student_id = ft.student_id
             WHERE s.pickup_route_id = %s AND rs.pickup_stop_order = %s 
             AND s.transport_status = 'ACTIVE' AND s.student_status IN ('CURRENT', 'ACTIVE')
-            AND s.is_transport_user = True
+            AND s.is_transport_user = 1
             """
         else:  # DROP
             query = """
@@ -51,7 +51,7 @@ class BusTrackingService:
             LEFT JOIN fcm_tokens ft ON s.student_id = ft.student_id
             WHERE s.drop_route_id = %s AND rs.drop_stop_order = %s 
             AND s.transport_status = 'ACTIVE' AND s.student_status IN ('CURRENT', 'ACTIVE')
-            AND s.is_transport_user = True
+            AND s.is_transport_user = 1
             """
         
         return execute_query(query, (route_id, stop_order), fetch_all=True) or []
@@ -70,7 +70,7 @@ class BusTrackingService:
             WHERE s.pickup_route_id = %s 
             AND (rs.location = %s OR ((rs.location IS NULL OR rs.location = '') AND rs.stop_name = %s))
             AND s.transport_status = 'ACTIVE' AND s.student_status IN ('CURRENT', 'ACTIVE')
-            AND s.is_transport_user = True
+            AND s.is_transport_user = 1
             """
             return execute_query(query, (route_id, location_name, location_name), fetch_all=True) or []
         else:  # DROP
@@ -82,7 +82,7 @@ class BusTrackingService:
             WHERE s.drop_route_id = %s 
             AND (rs.location = %s OR ((rs.location IS NULL OR rs.location = '') AND rs.stop_name = %s))
             AND s.transport_status = 'ACTIVE' AND s.student_status IN ('CURRENT', 'ACTIVE')
-            AND s.is_transport_user = True
+            AND s.is_transport_user = 1
             """
         return execute_query(query, (route_id, location_name, location_name), fetch_all=True) or []
     
@@ -95,7 +95,7 @@ class BusTrackingService:
         query = f"""
         SELECT DISTINCT ft.fcm_token
         FROM students s
-        JOIN fcm_tokens ft ON (s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
+        JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
         WHERE s.student_id IN ({placeholders}) AND ft.fcm_token IS NOT NULL
         """
         
@@ -316,14 +316,23 @@ class BusTrackingService:
                             self._log_notification(title, message, trip['route_id'], future_loc)
 
 
+            trip_completed = False
+            if stops and current_stop_order == stops[-1]['stop_order']:
+                trip_completed = True
+                try:
+                    from app.services.proximity_service import proximity_service
+                    await proximity_service.complete_trip(trip_id, trip['route_id'])
+                except Exception as comp_err:
+                    logger.error(f"Failed to auto-complete trip {trip_id}: {comp_err}")
+
             return {
                 "success": True,
                 "trip_id": trip_id,
                 "current_stop_order": current_stop_order,
                 "current_stop_info": current_stop_info,
                 "stops_passed": stops_passed,
-                "trip_completed": False,
-                "message": f"Reached {current_stop_info['stop_name']}" if current_stop_info else "In transit"
+                "trip_completed": trip_completed,
+                "message": "Trip completed" if trip_completed else (f"Reached {current_stop_info['stop_name']}" if current_stop_info else "In transit")
             }
             
         except Exception as e:
@@ -340,13 +349,24 @@ class BusTrackingService:
     async def skip_specific_stop(self, trip_id: str, stop_order: int):
         """Mark a specific stop_order as skipped for the current trip"""
         try:
-            # BUG FIX: Previous query only selected 'skipped_stops', then tried to access
-            # result['route_id'] and result.get('trip_type') → KeyError crash every time.
-            # Also, stop_logs was being reset to {} on every call.
-            query = "SELECT skipped_stops, stop_logs, trip_type, route_id FROM trips WHERE trip_id = %s"
+            query = "SELECT skipped_stops, stop_logs, trip_type, route_id, current_stop_order FROM trips WHERE trip_id = %s"
             result = execute_query(query, (trip_id,), fetch_one=True)
             if not result:
                 return {"success": False, "message": "Trip not found"}
+
+            current_order = result.get('current_stop_order', 0)
+            if stop_order <= current_order:
+                return {"success": False, "message": "Cannot skip a stop that the bus has already passed"}
+
+            order_field = "pickup_stop_order" if result.get('trip_type') == "PICKUP" else "drop_stop_order"
+            route_id = result.get('route_id')
+            stops_query = f"""
+            SELECT stop_id, stop_name, location, latitude, longitude, {order_field} as stop_order
+            FROM route_stops 
+            WHERE route_id = %s AND {order_field} IS NOT NULL
+            ORDER BY {order_field}
+            """
+            stops = execute_query(stops_query, (route_id,), fetch_all=True) or []
 
             skipped_raw = result.get('skipped_stops')
             if isinstance(skipped_raw, list):
@@ -358,6 +378,21 @@ class BusTrackingService:
                     skipped = []
             else:
                 skipped = []
+                
+            all_remaining_unskipped = [
+                s for s in stops
+                if s['stop_order'] > current_order and s['stop_order'] not in skipped
+            ]
+            
+            if not all_remaining_unskipped:
+                return {"success": False, "message": "No more stops to skip"}
+                
+            # Guard: Last stop
+            if len(all_remaining_unskipped) == 1 and all_remaining_unskipped[0]['stop_order'] == stop_order:
+                return {
+                    "success": False,
+                    "message": f"Cannot skip '{all_remaining_unskipped[0]['stop_name']}' — it is the last stop on this route."
+                }
             
             # 2. Add new stop order if not already skipped
             if stop_order not in skipped:
@@ -372,15 +407,9 @@ class BusTrackingService:
                     current_stop_logs = {}
             
             # Find stop_id for this order to mark as SKIPPED
-            order_field = "pickup_stop_order" if result.get('trip_type') == "PICKUP" else "drop_stop_order"
-            route_id = result.get('route_id')
-            if route_id:
-                stop_res = execute_query(
-                    f"SELECT stop_id FROM route_stops WHERE route_id = %s AND {order_field} = %s",
-                    (route_id, stop_order), fetch_one=True
-                )
-                if stop_res:
-                    current_stop_logs[stop_res['stop_id']] = "SKIPPED"
+            target_stop_data = next((s for s in stops if s['stop_order'] == stop_order), None)
+            if target_stop_data:
+                current_stop_logs[target_stop_data['stop_id']] = "SKIPPED"
 
             # 4. Update DB
             execute_query(
@@ -389,6 +418,15 @@ class BusTrackingService:
             )
 
             logger.info(f"🚫 Stop {stop_order} manually excluded from trip {trip_id}")
+            
+            # Send Notification to students at that specific stop
+            if target_stop_data:
+                students_skipped = self.get_students_for_route_stop(route_id, stop_order, result.get('trip_type'))
+                if students_skipped:
+                    title = "🚌 Stop Skipped"
+                    message = f"The bus will skip {target_stop_data['stop_name']} today."
+                    await self._broadcast_helper(students_skipped, title, message, {"trip_id": trip_id, "status": "SKIPPED"})
+            
             return {"success": True, "message": f"Stop {stop_order} skipped for this trip", "skipped_stops": skipped}
         except Exception as e:
             logger.error(f"Error skipping specific stop: {e}")
@@ -441,20 +479,26 @@ class BusTrackingService:
             if not all_remaining_unskipped:
                 return {"success": False, "message": "No more stops to skip"}
 
-            # BUG FIX: Guard against skipping the LAST stop — if only 1 unskipped stop
-            # remains, that is the terminal stop and must not be skipped.
-            if len(all_remaining_unskipped) <= 1:
+            next_unskipped = all_remaining_unskipped[0]
+            target_loc = next_unskipped['location'] or next_unskipped['stop_name']
+            
+            # Find all stops at this exact location
+            stops_to_skip = [
+                s for s in all_remaining_unskipped 
+                if (s['location'] or s['stop_name']) == target_loc
+            ]
+
+            # BUG FIX: Guard against skipping the LAST stop
+            if len(all_remaining_unskipped) <= len(stops_to_skip):
                 return {
                     "success": False,
-                    "message": f"Cannot skip '{all_remaining_unskipped[0]['stop_name']}' — it is the last stop on this route."
+                    "message": f"Cannot skip '{target_loc}' — it includes the last stop on this route."
                 }
 
-            next_unskipped = all_remaining_unskipped[0]
-            target_skip_order = next_unskipped['stop_order']
-            skipped_stop_name = next_unskipped['stop_name']
-
             # 2. Add to skipped_stops list (DO NOT advance current_stop_order)
-            skipped_list.append(target_skip_order)
+            for s in stops_to_skip:
+                if s['stop_order'] not in skipped_list:
+                    skipped_list.append(s['stop_order'])
 
             # 3. Update stop_logs to mark as SKIPPED
             current_stop_logs = {}
@@ -464,15 +508,27 @@ class BusTrackingService:
                 except Exception:
                     current_stop_logs = {}
             
-            current_stop_logs[next_unskipped['stop_id']] = "SKIPPED"
+            for s in stops_to_skip:
+                current_stop_logs[s['stop_id']] = "SKIPPED"
 
             # 4. Update DB: keep current_stop_order the same, just update skipped_stops and stop_logs
             execute_query(
                 "UPDATE trips SET skipped_stops = %s, stop_logs = %s, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s",
                 (json.dumps(skipped_list), json.dumps(current_stop_logs), trip_id)
             )
+            
+            skipped_stop_name = target_loc
+            target_skip_order = stops_to_skip[0]['stop_order']
 
-            logger.info(f"⏭️ Manual Skip: Stop {skipped_stop_name} (Order {target_skip_order})")
+            logger.info(f"⏭️ Manual Skip: Location {skipped_stop_name} (Order {target_skip_order})")
+
+            # 4.5. Trigger notification to the SKIPPED stops
+            for s in stops_to_skip:
+                students_skipped = self.get_students_for_route_stop(trip['route_id'], s['stop_order'], trip['trip_type'])
+                if students_skipped:
+                    title = "🚌 Stop Skipped"
+                    message = f"The bus will skip {s['stop_name']} today."
+                    await self._broadcast_helper(students_skipped, title, message, {"trip_id": trip_id, "status": "SKIPPED"})
 
             # 5. Trigger notifications for the stops AFTER the skipped one
             # Recompute remaining after the skip so the skipped stop is excluded
@@ -532,7 +588,7 @@ class BusTrackingService:
             LEFT JOIN fcm_tokens ft ON (s.student_id = ft.student_id OR s.parent_id = ft.parent_id OR s.s_parent_id = ft.parent_id)
             LEFT JOIN parents p ON ft.parent_id = p.parent_id
             WHERE rs.route_id = %s AND s.transport_status = 'ACTIVE' 
-            AND s.student_status IN ('CURRENT', 'ACTIVE') AND s.is_transport_user = True
+            AND s.student_status IN ('CURRENT', 'ACTIVE') AND s.is_transport_user = 1
             AND ft.fcm_token IS NOT NULL
             GROUP BY rs.stop_id, rs.stop_name, rs.pickup_stop_order, rs.drop_stop_order
             """
