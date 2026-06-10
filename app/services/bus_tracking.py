@@ -35,7 +35,7 @@ class BusTrackingService:
         """Get students for a specific route stop based on trip type"""
         if trip_type == "PICKUP":
             query = """
-            SELECT s.student_id, s.name, ft.fcm_token, rs.stop_name
+            SELECT s.student_id, s.name, ft.fcm_token, rs.stop_name, rs.location
             FROM students s
             JOIN route_stops rs ON s.pickup_stop_id = rs.stop_id
             LEFT JOIN fcm_tokens ft ON s.student_id = ft.student_id
@@ -45,7 +45,7 @@ class BusTrackingService:
             """
         else:  # DROP
             query = """
-            SELECT s.student_id, s.name, ft.fcm_token, rs.stop_name
+            SELECT s.student_id, s.name, ft.fcm_token, rs.stop_name, rs.location
             FROM students s
             JOIN route_stops rs ON s.drop_stop_id = rs.stop_id
             LEFT JOIN fcm_tokens ft ON s.student_id = ft.student_id
@@ -180,13 +180,14 @@ class BusTrackingService:
                         float(first_stop['latitude']), float(first_stop['longitude'])
                     )
                     if dist_to_first <= 0.5: # 500m
-                        logger.info(f"🔔 Notifying first stop 500m alert: {first_stop['stop_name']}")
+                        first_stop_loc = first_stop['location'] or first_stop['stop_name']
+                        logger.info(f"🔔 Notifying first stop 500m alert: {first_stop_loc}")
                         students = self.get_students_for_route_stop(trip['route_id'], 1, trip['trip_type'])
                         if students:
                             title = "🚌 Bus Nearby"
-                            body = f"The bus is approaching {first_stop['stop_name']}. Please be ready."
-                            await self._broadcast_helper(students, title, body, {"trip_id": trip_id, "stop_name": first_stop['stop_name'], "status": "UPCOMING"}, message_type="audio")
-                            self._log_notification(title, body, trip['route_id'], first_stop['location'] or first_stop['stop_name'])
+                            body = f"The bus is approaching {first_stop_loc}. Please be ready."
+                            await self._broadcast_helper(students, title, body, {"trip_id": trip_id, "stop_name": first_stop_loc, "status": "UPCOMING"}, message_type="audio")
+                            self._log_notification(title, body, trip['route_id'], first_stop_loc)
                         
                         execute_query("UPDATE trips SET is_first_stop_notified = 1 WHERE trip_id = %s", (trip_id,))
             

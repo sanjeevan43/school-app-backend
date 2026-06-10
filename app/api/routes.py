@@ -3787,11 +3787,12 @@ async def start_trip(trip_id: str):
             student_ids = [s['student_id'] for s in first_stop_students]
             parent_tokens = bus_tracking_service.get_parent_tokens_for_students(student_ids)
             if parent_tokens:
+                first_stop_loc = first_stop_students[0]['location'] or first_stop_students[0]['stop_name']
                 # Send notifications concurrently
                 tasks = [
                     notification_service.send_to_device(
                         title="Bus Trip Started",
-                        body=f"The bus has started! It is on the way to your stop ({first_stop_students[0]['stop_name']}).",
+                        body=f"The bus has started! It is on the way to your stop ({first_stop_loc}).",
                         token=token,
                         recipient_type="parent",
                         message_type="audio"
