@@ -139,12 +139,21 @@ async def scheduled_cleanup():
         # Wait for 24 hours (86400 seconds)
         await asyncio.sleep(86400)
 
-@app.on_event("startup")
-async def on_startup():
-    """Actions to perform on startup"""
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     # Start the background cleanup task
-    asyncio.create_task(scheduled_cleanup())
-    logger.info("Startup complete: Scheduled cleanup task started.")
+    cleanup_task = asyncio.create_task(scheduled_cleanup())
+    logger.info("Lifespan startup complete: Scheduled cleanup task started.")
+    yield
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+
+app.router.lifespan_context = lifespan
 
 # Root endpoint
 @app.get("/", include_in_schema=False)
