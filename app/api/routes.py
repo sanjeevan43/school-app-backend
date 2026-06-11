@@ -326,7 +326,7 @@ async def update_admin(admin_id: str, admin_update: AdminUpdate):
     # If name or phone changed and NO custom password provided
     should_refresh_default = (admin_update.name is not None or admin_update.phone is not None) and not admin_update.password
     
-    for field, value in admin_update.dict(exclude_unset=True).items():
+    for field, value in admin_update.model_dump(exclude_unset=True).items():
         if field == "password" and value:
             update_fields.append("password_hash = %s")
             values.append(get_password_hash(value))
@@ -784,7 +784,7 @@ async def update_parent(parent_id: str, parent_update: ParentUpdate):
         # Check if we should re-generate default password
         should_refresh_default = (parent_update.name is not None or parent_update.phone is not None) and not parent_update.password
 
-        for field, value in parent_update.dict(exclude_unset=True).items():
+        for field, value in parent_update.model_dump(exclude_unset=True).items():
             if field == "password" and value:
                 update_fields.append("password_hash = %s")
                 values.append(get_password_hash(value))
@@ -812,7 +812,7 @@ async def update_parent(parent_id: str, parent_update: ParentUpdate):
             pass
         
         # Trigger cascade updates
-        new_data = parent_update.dict(exclude_unset=True)
+        new_data = parent_update.model_dump(exclude_unset=True)
         cascade_service.update_parent_cascades(parent_id, old_parent, new_data)
         
         return await get_parent(parent_id)
@@ -1196,7 +1196,7 @@ async def update_driver(driver_id: str, driver_update: DriverUpdate):
     # Check if we should re-generate default password
     should_refresh_default = (driver_update.name is not None or driver_update.phone is not None) and not driver_update.password
     
-    for field, value in driver_update.dict(exclude_unset=True).items():
+    for field, value in driver_update.model_dump(exclude_unset=True).items():
         if field == "password" and value:
             update_fields.append("password_hash = %s")
             values.append(get_password_hash(value))
@@ -1433,7 +1433,7 @@ async def update_route(route_id: str, route_update: RouteUpdate):
         update_fields = []
         values = []
         
-        for field, value in route_update.dict(exclude_unset=True).items():
+        for field, value in route_update.model_dump(exclude_unset=True).items():
             if value is not None:
                 update_fields.append(f"{field} = %s")
                 values.append(value)
@@ -1449,7 +1449,7 @@ async def update_route(route_id: str, route_update: RouteUpdate):
             raise HTTPException(status_code=404, detail="Route not found")
         
         # Trigger cascade updates
-        new_data = route_update.dict(exclude_unset=True)
+        new_data = route_update.model_dump(exclude_unset=True)
         cascade_service.update_route_cascades(route_id, old_route, new_data)
         
         return await get_route(route_id)
@@ -1681,7 +1681,7 @@ async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
         update_fields = []
         values = []
         
-        for field, value in stop_update.dict(exclude_unset=True).items():
+        for field, value in stop_update.model_dump(exclude_unset=True).items():
             if value is not None:
                 update_fields.append(f"{field} = %s")
                 values.append(value)
@@ -1744,7 +1744,7 @@ async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
                     # D. Finally, update the stop itself with all new fields
                     update_fields = []
                     values = []
-                    for field, value in stop_update.dict(exclude_unset=True).items():
+                    for field, value in stop_update.model_dump(exclude_unset=True).items():
                         update_fields.append(f"{field} = %s")
                         values.append(value)
                     cursor.execute(f"UPDATE route_stops SET {', '.join(update_fields)} WHERE stop_id = %s", tuple(values + [stop_id]))
@@ -1753,7 +1753,7 @@ async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
                     # 2. Simple update without order change
                     update_fields = []
                     values = []
-                    for field, value in stop_update.dict(exclude_unset=True).items():
+                    for field, value in stop_update.model_dump(exclude_unset=True).items():
                         if value is not None:
                             update_fields.append(f"{field} = %s")
                             values.append(value)
@@ -1761,7 +1761,7 @@ async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
                         cursor.execute(f"UPDATE route_stops SET {', '.join(update_fields)} WHERE stop_id = %s", tuple(values + [stop_id]))
         
         # 3. Trigger cascade updates
-        new_data = stop_update.dict(exclude_unset=True)
+        new_data = stop_update.model_dump(exclude_unset=True)
         cascade_service.update_route_stop_cascades(stop_id, old_stop, new_data)
         
         return await get_route_stop(stop_id)
@@ -1927,7 +1927,7 @@ async def update_bus(bus_id: str, bus_update: BusUpdate):
     update_fields = []
     values = []
     
-    for field, value in bus_update.dict(exclude_unset=True).items():
+    for field, value in bus_update.model_dump(exclude_unset=True).items():
         if value is not None:
             update_fields.append(f"{field} = %s")
             values.append(value)
@@ -2159,7 +2159,7 @@ async def update_class(class_id: str, class_update: ClassUpdate):
     update_fields = []
     values = []
     
-    for field, value in class_update.dict(exclude_unset=True).items():
+    for field, value in class_update.model_dump(exclude_unset=True).items():
         if value is not None:
             update_fields.append(f"{field} = %s")
             values.append(value)
@@ -2357,7 +2357,7 @@ async def update_student(student_id: str, student_update: StudentUpdate):
         update_fields = []
         values = []
         
-        for field, value in student_update.dict(exclude_unset=True).items():
+        for field, value in student_update.model_dump(exclude_unset=True).items():
             if value is not None:
                 update_fields.append(f"{field} = %s")
                 values.append(value)
@@ -2373,7 +2373,7 @@ async def update_student(student_id: str, student_update: StudentUpdate):
             raise HTTPException(status_code=404, detail="Student not found")
         
         # Trigger cascade updates
-        new_data = student_update.dict(exclude_unset=True)
+        new_data = student_update.model_dump(exclude_unset=True)
         cascade_service.update_student_cascades(student_id, old_student, new_data)
         
         return await get_student(student_id)
@@ -3064,7 +3064,7 @@ async def update_trip(trip_id: str, trip_update: TripUpdate):
     update_fields = []
     values = []
     
-    for field, value in trip_update.dict(exclude_unset=True).items():
+    for field, value in trip_update.model_dump(exclude_unset=True).items():
         # Convert enum values to their string representation for SQL
         if hasattr(value, 'value'):
             value = value.value
@@ -3194,7 +3194,7 @@ async def update_error_log(error_id: str, error_update: ErrorHandlingUpdate):
     update_fields = []
     values = []
     
-    for field, value in error_update.dict(exclude_unset=True).items():
+    for field, value in error_update.model_dump(exclude_unset=True).items():
         if value is not None:
             update_fields.append(f"{field} = %s")
             values.append(value)
@@ -3436,7 +3436,7 @@ async def update_fcm_token(fcm_id: str, fcm_update: FCMTokenUpdate):
         update_fields = []
         values = []
         
-        for field, value in fcm_update.dict(exclude_unset=True).items():
+        for field, value in fcm_update.model_dump(exclude_unset=True).items():
             if value is not None:
                 update_fields.append(f"{field} = %s")
                 values.append(value)
@@ -3452,7 +3452,7 @@ async def update_fcm_token(fcm_id: str, fcm_update: FCMTokenUpdate):
             raise HTTPException(status_code=404, detail="FCM token not found")
         
         # Trigger cascade updates
-        new_data = fcm_update.dict(exclude_unset=True)
+        new_data = fcm_update.model_dump(exclude_unset=True)
         cascade_service.update_fcm_token_cascades(fcm_id, old_token, new_data)
         
         return await get_fcm_token(fcm_id)
@@ -4000,7 +4000,7 @@ async def update_app_version(version_id: str, version_update: AppVersionUpdate):
     update_fields = []
     values = []
     
-    for field, value in version_update.dict(exclude_unset=True).items():
+    for field, value in version_update.model_dump(exclude_unset=True).items():
         if value is not None:
             update_fields.append(f"{field} = %s")
             # Handle boolean to int conversion for MySQL

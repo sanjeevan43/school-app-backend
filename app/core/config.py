@@ -36,10 +36,11 @@ class Settings(BaseSettings):
     DOCS_USERNAME: str
     DOCS_PASSWORD: str
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-        extra = "ignore"  # Allow extra fields in .env without failing
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": True,
+        "extra": "ignore"  # Allow extra fields in .env without failing
+    }
 
 
 @lru_cache()
