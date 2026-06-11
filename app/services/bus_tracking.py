@@ -219,8 +219,8 @@ class BusTrackingService:
                     float(stop['latitude']), float(stop['longitude'])
                 )
                 
-                # Check if we have REACHED the stop (within 50m)
-                if distance <= 0.05: # reached stop (within 50m)
+                # Check if we have REACHED the stop (within 200m)
+                if distance <= 0.2: # reached stop (within 200m)
                     arrived_stop = stop
                     break
 
@@ -346,6 +346,8 @@ class BusTrackingService:
         tokens = self.get_parent_tokens_for_students(student_ids)
         if tokens:
             await notification_service.broadcast_to_tokens(list(set(tokens)), title, body, data, message_type=message_type)
+        else:
+            logger.warning(f"⚠️ No FCM tokens found for parents of students: {student_ids}. Notification '{title}' not sent.")
 
     async def skip_specific_stop(self, trip_id: str, stop_order: int):
         """Mark a specific stop_order as skipped for the current trip"""

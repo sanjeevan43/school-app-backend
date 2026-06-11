@@ -3871,6 +3871,22 @@ async def update_driver_location(driver_id: str, location: DriverLocationUpdate)
             updated_at = CURRENT_TIMESTAMP
         """
         execute_query(query, (driver_id, location.latitude, location.longitude))
+        
+        # Trigger bus tracking if there is an ongoing trip for this driver
+        active_trip = execute_query(
+            "SELECT trip_id FROM trips WHERE driver_id = %s AND status = 'ONGOING' LIMIT 1",
+            (driver_id,), fetch_one=True
+        )
+        if active_trip and 'trip_id' in active_trip:
+            from app.services.bus_tracking import bus_tracking_service
+            asyncio.create_task(
+                bus_tracking_service.update_bus_location(
+                    trip_id=active_trip['trip_id'],
+                    latitude=location.latitude,
+                    longitude=location.longitude
+                )
+            )
+            
         return {"message": "Location updated successfully"}
     except HTTPException:
         raise
