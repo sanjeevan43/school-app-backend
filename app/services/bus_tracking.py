@@ -317,12 +317,9 @@ class BusTrackingService:
                             self._log_notification(title, message, trip['route_id'], future_loc)
 
 
+            # Per user request: do not automatically complete the trip or tell the UI it's completed.
+            # The driver must manually complete it.
             trip_completed = False
-            if stops and current_stop_order == stops[-1]['stop_order']:
-                trip_completed = True
-                # Per user request: do not automatically complete the trip.
-                # Let the driver manually complete it.
-                # The response will still indicate trip_completed=True so the UI knows it reached the final stop.
 
             return {
                 "success": True,
@@ -331,7 +328,7 @@ class BusTrackingService:
                 "current_stop_info": current_stop_info,
                 "stops_passed": stops_passed,
                 "trip_completed": trip_completed,
-                "message": "Reached final stop" if trip_completed else (f"Reached {current_stop_info['stop_name']}" if current_stop_info else "In transit")
+                "message": f"Reached {current_stop_info['stop_name']}" if current_stop_info else "In transit"
             }
             
         except Exception as e:
