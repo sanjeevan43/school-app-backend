@@ -212,6 +212,17 @@ class BusTrackingService:
             current_stop_info = None
             arrived_stop = None
 
+            # --- Anti-Cascading Logic ---
+            # Calculate distance to the current stop (if any) to ensure we are actually moving away from it
+            # and closer to the next stop before triggering Arrival for the next stop.
+            current_stop = next((s for s in stops if s['stop_order'] == current_stop_order), None)
+            dist_to_current = float('inf')
+            if current_stop:
+                dist_to_current = self.calculate_distance(
+                    latitude, longitude,
+                    float(current_stop['latitude']), float(current_stop['longitude'])
+                )
+
             # Find if we have reached any of the upcoming stops
             for stop in lookahead_stops:
                 distance = self.calculate_distance(
@@ -219,8 +230,8 @@ class BusTrackingService:
                     float(stop['latitude']), float(stop['longitude'])
                 )
                 
-                # Check if we have REACHED the stop (within 500m)
-                if distance <= 0.5: # reached stop (within 500m)
+                # Check if we have REACHED the stop (within 500m) AND we are closer to it than the current stop
+                if distance <= 0.5 and distance < dist_to_current:
                     arrived_stop = stop
                     break
 
