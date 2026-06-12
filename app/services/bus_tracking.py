@@ -259,6 +259,8 @@ class BusTrackingService:
                             # If it was skipped but we physically arrived, still mark intermediate ones
                             if s['stop_order'] == target_order or s['stop_order'] not in skipped_list:
                                 new_stop_logs[s_id] = datetime.now().isoformat()
+                                if s['stop_order'] < target_order:
+                                    logger.warning(f"⚠️ Missed GPS update for intermediate stop: {s['stop_name']} (Order: {s['stop_order']}). Marking as reached implicitly.")
 
                 update_query = """
                 UPDATE trips SET 
@@ -282,6 +284,7 @@ class BusTrackingService:
                         message = f"The bus has arrived at {current_loc_name}."
                         await self._broadcast_helper(students_arrived, title, message, {"trip_id": trip_id, "location": current_loc_name, "status": "ARRIVED"}, message_type="audio")
                         self._log_notification(title, message, trip['route_id'], current_loc_name)
+                        logger.info(f"📣 Sent Arrival Notification for {current_loc_name} to {len(students_arrived)} students")
 
                     # Find UNIQUE locations ahead to send approaching/nearby alerts once per area
                     remaining_stops = [s for s in stops if s['stop_order'] > target_order and s['stop_order'] not in skipped_list]
@@ -315,6 +318,7 @@ class BusTrackingService:
                                 message_type="audio"
                             )
                             self._log_notification(title, message, trip['route_id'], future_loc)
+                            logger.info(f"📣 Sent '{status_val}' Notification for {future_loc} to {len(students_ahead)} students")
 
 
             # Per user request: do not automatically complete the trip or tell the UI it's completed.
