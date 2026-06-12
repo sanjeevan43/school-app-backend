@@ -307,8 +307,8 @@ class BusTrackingService:
                             unique_locs_ahead.append(loc)
                             seen_locs.add(loc)
 
-                    # B. Upcoming Stops Notifications (Next 4 Unique Locations)
-                    for i in range(min(len(unique_locs_ahead), 4)):
+                    # B. Upcoming Stops Notifications (Next 5 Unique Locations)
+                    for i in range(min(len(unique_locs_ahead), 5)):
                         future_loc = unique_locs_ahead[i]
                         students_ahead = self.get_students_for_location(trip['route_id'], future_loc, trip['trip_type'])
                         if students_ahead:
