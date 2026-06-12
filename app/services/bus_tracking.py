@@ -179,9 +179,9 @@ class BusTrackingService:
                         latitude, longitude,
                         float(first_stop['latitude']), float(first_stop['longitude'])
                     )
-                    if dist_to_first <= 0.5: # 500m
+                    if dist_to_first <= 1.0: # 1000m (1km)
                         first_stop_loc = first_stop['location'] or first_stop['stop_name']
-                        logger.info(f"🔔 Notifying first stop 500m alert: {first_stop_loc}")
+                        logger.info(f"🔔 Notifying first stop 1000m alert: {first_stop_loc}")
                         students = self.get_students_for_route_stop(trip['route_id'], 1, trip['trip_type'])
                         if students:
                             title = "🚌 Bus Nearby"
@@ -219,8 +219,8 @@ class BusTrackingService:
                     float(stop['latitude']), float(stop['longitude'])
                 )
                 
-                # Check if we have REACHED the stop (within 200m)
-                if distance <= 0.2: # reached stop (within 200m)
+                # Check if we have REACHED the stop (within 500m)
+                if distance <= 0.5: # reached stop (within 500m)
                     arrived_stop = stop
                     break
 
