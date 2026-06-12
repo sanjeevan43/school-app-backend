@@ -1,3 +1,6 @@
+import os
+os.environ["DEBUG"] = "False"
+
 from fastapi.testclient import TestClient
 from main import app
 

@@ -185,10 +185,13 @@ class ProximityTrackingService:
         """Manual Complete Trip Logic - updates DB status to COMPLETED"""
         trip_type = "PICKUP" # Default
         try:
-            # Fetch trip details to get trip_type
-            trip_info = execute_query("SELECT trip_type FROM trips WHERE trip_id = %s", (trip_id,), fetch_one=True)
+            # Fetch trip details to get trip_type and status
+            trip_info = execute_query("SELECT trip_type, status FROM trips WHERE trip_id = %s", (trip_id,), fetch_one=True)
             if trip_info:
                 trip_type = trip_info['trip_type']
+                if trip_info.get('status') == 'COMPLETED':
+                    logger.info(f"⏭️ Trip {trip_id} is already COMPLETED. Skipping duplicate complete notification.")
+                    return {"success": True, "recipients": 0, "trip_type": trip_type, "message": "Trip already completed"}
 
             # Update trip status in DB
             execute_query(

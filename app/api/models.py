@@ -557,7 +557,7 @@ class TripResponse(BaseModel):
     trip_type: TripType
     status: TripStatus
     current_stop_order: int
-    skipped_stops: Optional[str] = None
+    skipped_stops: Any = None
     stop_logs: Any = None
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None

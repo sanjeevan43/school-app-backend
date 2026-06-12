@@ -3009,6 +3009,17 @@ def _format_trip_logs(trip):
         logs = new_logs
     
     trip['stop_logs'] = logs if isinstance(logs, dict) else {}
+    
+    # Format skipped_stops too
+    skipped = trip.get('skipped_stops')
+    if isinstance(skipped, str):
+        try:
+            import json
+            skipped = json.loads(skipped)
+        except:
+            skipped = []
+    trip['skipped_stops'] = skipped if isinstance(skipped, list) else (skipped or [])
+    
     return trip
 
 def _format_trips_logs(trips):
@@ -3061,6 +3072,11 @@ async def get_ongoing_trips():
 @router.put("/trips/{trip_id}", response_model=TripResponse, tags=["Trips"])
 async def update_trip(trip_id: str, trip_update: TripUpdate):
     """Update trip"""
+    # Check if trip exists first
+    trip = execute_query("SELECT trip_id FROM trips WHERE trip_id = %s", (trip_id,), fetch_one=True)
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
     update_fields = []
     values = []
     
@@ -3077,15 +3093,17 @@ async def update_trip(trip_id: str, trip_update: TripUpdate):
     values.append(trip_id)
     query = f"UPDATE trips SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s"
     
-    result = execute_query(query, tuple(values))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Trip not found")
-    
+    execute_query(query, tuple(values))
     return await get_trip(trip_id)
 
 @router.put("/trips/{trip_id}/status", response_model=TripResponse, tags=["Trips"])
 async def update_trip_status(trip_id: str, status_update: TripStatusUpdate):
     """Update trip status only. Auto-sets started_at when ONGOING and ended_at when COMPLETED/CANCELED."""
+    # Check if trip exists first
+    trip = execute_query("SELECT trip_id FROM trips WHERE trip_id = %s", (trip_id,), fetch_one=True)
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
     new_status = status_update.status.value
     if new_status == "ONGOING":
         query = """
@@ -3104,9 +3122,7 @@ async def update_trip_status(trip_id: str, status_update: TripStatusUpdate):
         query = "UPDATE trips SET status = %s, ended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s"
     else:
         query = "UPDATE trips SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s"
-    result = execute_query(query, (new_status, trip_id))
-    if result == 0:
-        raise HTTPException(status_code=404, detail="Trip not found")
+    execute_query(query, (new_status, trip_id))
     return await get_trip(trip_id)
 
 @router.post("/trips/{trip_id}/skip-next-stop", tags=["Trips"])
