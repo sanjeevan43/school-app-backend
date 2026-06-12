@@ -205,8 +205,8 @@ class BusTrackingService:
             
             # FIX: Use >= instead of > so that stops at current_stop_order are also considered
             # This fixes the case where skip_stop sets current_stop_order to the skipped stop's order
-            # but the stop is in skipped_list, so lookahead correctly skips it and finds the next one
-            lookahead_stops = [s for s in stops if s['stop_order'] > current_stop_order and s['stop_order'] not in skipped_list][:5]
+            # FIX: Limit lookahead strictly to the single next stop to enforce order-based tracking
+            lookahead_stops = [s for s in stops if s['stop_order'] > current_stop_order and s['stop_order'] not in skipped_list][:1]
             
             stops_passed = 0
             current_stop_info = None
