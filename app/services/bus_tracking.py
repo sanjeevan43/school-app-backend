@@ -320,11 +320,9 @@ class BusTrackingService:
             trip_completed = False
             if stops and current_stop_order == stops[-1]['stop_order']:
                 trip_completed = True
-                try:
-                    from app.services.proximity_service import proximity_service
-                    await proximity_service.complete_trip(trip_id, trip['route_id'])
-                except Exception as comp_err:
-                    logger.error(f"Failed to auto-complete trip {trip_id}: {comp_err}")
+                # Per user request: do not automatically complete the trip.
+                # Let the driver manually complete it.
+                # The response will still indicate trip_completed=True so the UI knows it reached the final stop.
 
             return {
                 "success": True,
@@ -333,7 +331,7 @@ class BusTrackingService:
                 "current_stop_info": current_stop_info,
                 "stops_passed": stops_passed,
                 "trip_completed": trip_completed,
-                "message": "Trip completed" if trip_completed else (f"Reached {current_stop_info['stop_name']}" if current_stop_info else "In transit")
+                "message": "Reached final stop" if trip_completed else (f"Reached {current_stop_info['stop_name']}" if current_stop_info else "In transit")
             }
             
         except Exception as e:
