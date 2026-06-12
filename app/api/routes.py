@@ -3088,7 +3088,18 @@ async def update_trip_status(trip_id: str, status_update: TripStatusUpdate):
     """Update trip status only. Auto-sets started_at when ONGOING and ended_at when COMPLETED/CANCELED."""
     new_status = status_update.status.value
     if new_status == "ONGOING":
-        query = "UPDATE trips SET status = %s, started_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s"
+        query = """
+        UPDATE trips 
+        SET status = %s, 
+            started_at = CURRENT_TIMESTAMP, 
+            ended_at = NULL, 
+            current_stop_order = 0,
+            is_first_stop_notified = 0,
+            skipped_stops = NULL,
+            stop_logs = '{}',
+            updated_at = CURRENT_TIMESTAMP 
+        WHERE trip_id = %s
+        """
     elif new_status in ("COMPLETED", "CANCELED"):
         query = "UPDATE trips SET status = %s, ended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s"
     else:
@@ -3762,11 +3773,16 @@ async def get_active_and_pending_trips():
 async def start_trip(trip_id: str):
     """Driver starts trip - everything else becomes automatic"""
     try:
-        # Update trip status to ONGOING
+        # Update trip status to ONGOING and reset progression metrics
         query = """
         UPDATE trips SET 
         status = 'ONGOING', 
         started_at = CURRENT_TIMESTAMP,
+        ended_at = NULL,
+        current_stop_order = 0,
+        is_first_stop_notified = 0,
+        skipped_stops = NULL,
+        stop_logs = '{}',
         updated_at = CURRENT_TIMESTAMP 
         WHERE trip_id = %s AND status = 'NOT_STARTED'
         """
@@ -3795,7 +3811,8 @@ async def start_trip(trip_id: str):
                         body=f"The bus has started! It is on the way to your stop ({first_stop_loc}).",
                         token=token,
                         recipient_type="parent",
-                        message_type="audio"
+                        message_type="audio",
+                        data={"trip_id": trip_id, "status": "STARTED", "type": "proximity_alert"}
                     )
                     for token in set(parent_tokens)
                 ]

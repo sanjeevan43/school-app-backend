@@ -106,3 +106,49 @@ def test_update_trip_status_endpoint(client, mock_db_cursor):
     response = client.put("/api/v1/trips/test_trip_123/status", json=payload, headers=HEADERS)
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["status"] == "COMPLETED"
+
+def test_update_trip_status_to_ongoing_resets_progression(client, mock_db_cursor, mocker):
+    mock_db_cursor.rowcount = 1
+    mock_db_cursor.fetchone.return_value = {
+        "trip_id": "test_trip_123",
+        "status": "ONGOING",
+        "bus_id": "test_bus_123",
+        "driver_id": "test_driver_123",
+        "route_id": "test_route_123",
+        "trip_date": "2024-01-01",
+        "trip_type": "PICKUP",
+        "current_stop_order": 0,
+        "is_first_stop_notified": 0,
+        "skipped_stops": "[]",
+        "stop_logs": "{}",
+        "created_at": "2024-01-01T00:00:00",
+        "updated_at": "2024-01-01T00:00:00"
+    }
+    
+    # Spy on routes.execute_query by recording its args but executing the original mock side effect
+    from app.core.database import execute_query as original_execute
+    queries_run = []
+    
+    def spy_execute(query, params=None, fetch_one=False, fetch_all=False):
+        queries_run.append(query)
+        return original_execute(query, params, fetch_one, fetch_all)
+        
+    mocker.patch("app.api.routes.execute_query", side_effect=spy_execute)
+    
+    payload = {
+        "status": "ONGOING"
+    }
+    
+    response = client.put("/api/v1/trips/test_trip_123/status", json=payload, headers=HEADERS)
+    assert response.status_code == status.HTTP_200_OK
+    
+    ongoing_update_called = False
+    for query_str in queries_run:
+        q_lower = query_str.lower()
+        if "update trips" in q_lower and "status" in q_lower:
+            if "current_stop_order = 0" in q_lower and "is_first_stop_notified = 0" in q_lower:
+                ongoing_update_called = True
+                
+    assert ongoing_update_called, "The query updating trip to ONGOING did not reset progression/notification flags"
+
+

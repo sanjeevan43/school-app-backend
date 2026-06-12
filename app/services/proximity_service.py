@@ -139,7 +139,18 @@ class ProximityTrackingService:
             
             # Update trip status in DB and initialize stop_logs
             execute_query(
-                "UPDATE trips SET status = 'ONGOING', started_at = CURRENT_TIMESTAMP, ended_at = NULL, stop_logs = %s, updated_at = CURRENT_TIMESTAMP WHERE trip_id = %s",
+                """
+                UPDATE trips 
+                SET status = 'ONGOING', 
+                    started_at = CURRENT_TIMESTAMP, 
+                    ended_at = NULL, 
+                    current_stop_order = 0,
+                    is_first_stop_notified = 0,
+                    skipped_stops = NULL,
+                    stop_logs = %s, 
+                    updated_at = CURRENT_TIMESTAMP 
+                WHERE trip_id = %s
+                """,
                 (json.dumps(stop_logs), trip_id)
             )
             logger.info(f"✅ Trip {trip_id} marked as ONGOING in DB with initialized stop_logs")
@@ -152,7 +163,7 @@ class ProximityTrackingService:
             body = "The bus has started its trip from the school."
             await notification_service.broadcast_to_tokens(
                 tokens, title, body, 
-                {"trip_id": trip_id, "route_id": route_id, "status": "STARTED"},
+                {"trip_id": trip_id, "route_id": route_id, "status": "STARTED", "type": "proximity_alert"},
                 message_type="audio"
             )
             # Log in history
@@ -197,7 +208,7 @@ class ProximityTrackingService:
                 body = "The bus has completed the trip."
                 await notification_service.broadcast_to_tokens(
                     tokens, title, body, 
-                    {"trip_id": trip_id, "route_id": route_id, "status": "COMPLETED"},
+                    {"trip_id": trip_id, "route_id": route_id, "status": "COMPLETED", "type": "proximity_alert"},
                     message_type="audio"
                 )
                 recipients_count = len(tokens)

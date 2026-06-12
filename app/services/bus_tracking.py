@@ -342,6 +342,11 @@ class BusTrackingService:
 
     async def _broadcast_helper(self, students: List[Dict], title: str, body: str, data: Dict, message_type: str = "audio"):
         """Helper to broadcast notifications asynchronously"""
+        if data is None:
+            data = {}
+        if "type" not in data:
+            data["type"] = "proximity_alert"
+            
         student_ids = [st['student_id'] for st in students]
         tokens = self.get_parent_tokens_for_students(student_ids)
         if tokens:
