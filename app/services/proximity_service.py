@@ -21,20 +21,30 @@ class ProximityTrackingService:
         self.notified_stops: Dict[str, Set[str]] = {}
         self.main_backend_url = os.getenv("MAIN_BACKEND_URL", "http://localhost:8080/api/v1")
 
-    async def fetch_tokens_by_route(self, route_id: str) -> List[str]:
-        """Fetch all parent tokens for a route (simplified fallback)"""
+    async def fetch_tokens_by_route(self, route_id: str, trip_type: Any = None) -> List[str]:
+        """Fetch parent tokens for a route, optionally filtered by trip type (PICKUP or DROP)"""
         try:
-            query = """
+            if hasattr(trip_type, 'value'):
+                trip_type = trip_type.value
+            if trip_type == "PICKUP":
+                route_cond = "s.pickup_route_id = %s"
+            elif trip_type == "DROP":
+                route_cond = "s.drop_route_id = %s"
+            else:
+                route_cond = "(s.pickup_route_id = %s OR s.drop_route_id = %s)"
+
+            query = f"""
             SELECT DISTINCT ft.fcm_token 
             FROM fcm_tokens ft
             JOIN students s ON (ft.student_id = s.student_id OR ft.parent_id = s.parent_id OR ft.parent_id = s.s_parent_id)
-            WHERE (s.pickup_route_id = %s OR s.drop_route_id = %s)
+            WHERE {route_cond}
             AND s.transport_status = 'ACTIVE'
             AND s.student_status IN ('CURRENT', 'ACTIVE')
             AND s.is_transport_user = 1
             AND ft.fcm_token IS NOT NULL
             """
-            rows = execute_query(query, (route_id, route_id), fetch_all=True)
+            params = (route_id,) if trip_type in ("PICKUP", "DROP") else (route_id, route_id)
+            rows = execute_query(query, params, fetch_all=True)
             return [r['fcm_token'] for r in rows if r['fcm_token']]
         except Exception as e:
             logger.error(f"Error fetching route tokens: {e}")
@@ -157,7 +167,11 @@ class ProximityTrackingService:
         except Exception as e:
             logger.error(f"Failed to update trip status or initialize stop_logs: {e}")
 
-        tokens = await self.fetch_tokens_by_route(route_id)
+        # Declare trip_type fallback in case trip_info fetch failed
+        if 'trip_type' not in locals():
+            trip_type = "PICKUP"
+
+        tokens = await self.fetch_tokens_by_route(route_id, trip_type)
         if tokens:
             title = "🚌 Trip Started"
             body = "The bus has started its trip from the school."
@@ -202,33 +216,8 @@ class ProximityTrackingService:
         except Exception as e:
             logger.error(f"Failed to update trip status to COMPLETED: {e}")
 
-        # Only send notification for PICKUP trips per user request
+        # No complete_trip notifications per user request (only on schedule/start)
         recipients_count = 0
-        if trip_type == "PICKUP":
-            tokens = await self.fetch_tokens_by_route(route_id)
-            if tokens:
-                title = "✅ Trip Completed"
-                body = "The bus has completed the trip."
-                await notification_service.broadcast_to_tokens(
-                    tokens, title, body, 
-                    {"trip_id": trip_id, "route_id": route_id, "status": "COMPLETED", "type": "proximity_alert"},
-                    message_type="audio"
-                )
-                recipients_count = len(tokens)
-                # Log in history
-                try:
-                    admin_res = execute_query("SELECT admin_id FROM admins WHERE status = 'ACTIVE' LIMIT 1", fetch_one=True)
-                    admin_id = admin_res['admin_id'] if admin_res else None
-                    
-                    if admin_id:
-                        execute_query(
-                            "INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, sent_by_admin_id) VALUES (%s, %s, %s, %s, %s, %s)",
-                            (str(uuid.uuid4()), title, body, "ROUTE", route_id, admin_id)
-                        )
-                except Exception as e:
-                    logger.warning(f"Failed to log complete trip notification: {e}")
-        else:
-            logger.info(f"⏭️ Skipping complete notification for {trip_type} trip")
         
         # Cleanup in-memory state
         if trip_id in self.active_trips:

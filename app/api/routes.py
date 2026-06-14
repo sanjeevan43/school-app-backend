@@ -3040,6 +3040,30 @@ async def create_trip(trip: TripCreate):
         execute_query(query, (trip_id, trip.bus_id, trip.driver_id, trip.route_id,
                              trip.trip_date, trip.trip_type))
         
+        # Notify users of the scheduled trip
+        try:
+            from app.services.proximity_service import proximity_service
+            tokens = await proximity_service.fetch_tokens_by_route(trip.route_id, trip.trip_type.value)
+            if tokens:
+                title = "🚌 Trip Scheduled"
+                body = f"A new {trip.trip_type.value.lower()} trip has been scheduled for your route."
+                await notification_service.broadcast_to_tokens(
+                    list(set(tokens)), title, body,
+                    {"trip_id": trip_id, "route_id": trip.route_id, "status": "NOT_STARTED", "type": "proximity_alert"},
+                    message_type="audio"
+                )
+                
+                # Log in history
+                admin_res = execute_query("SELECT admin_id FROM admins WHERE status = 'ACTIVE' LIMIT 1", fetch_one=True)
+                admin_id = admin_res['admin_id'] if admin_res else None
+                if admin_id:
+                    execute_query(
+                        "INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, sent_by_admin_id) VALUES (%s, %s, %s, %s, %s, %s)",
+                        (str(uuid.uuid4()), title, body, "ROUTE", trip.route_id, admin_id)
+                    )
+        except Exception as notify_err:
+            logger.warning(f"Failed to send scheduled trip notification: {notify_err}")
+
         return await get_trip(trip_id)
     except Exception as e:
         logger.error(f"Create trip error: {e}")
