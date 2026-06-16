@@ -657,11 +657,11 @@ async def get_notifications_by_parent(parent_id: str):
        OR n.recipient_type = 'PARENT_DIRECT' AND n.recipient_id = %s
        OR s.parent_id = %s 
        OR s.s_parent_id = %s)
-       AND n.title NOT LIKE '🚌%'
-       AND n.title NOT LIKE '✅%'
-       AND n.title NOT LIKE '%Bus%'
-       AND n.title NOT LIKE '%Arrived%'
-       AND n.title NOT LIKE '%Approaching%'
+       AND n.title NOT LIKE '🚌%%'
+       AND n.title NOT LIKE '✅%%'
+       AND n.title NOT LIKE '%%Bus%%'
+       AND n.title NOT LIKE '%%Arrived%%'
+       AND n.title NOT LIKE '%%Approaching%%'
     ORDER BY n.created_at DESC
     """
     notifications = execute_query(query, (parent_id, parent_id, parent_id), fetch_all=True)
