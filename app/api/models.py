@@ -657,6 +657,8 @@ class NotificationRequest(BaseModel):
 class LoginRequest(BaseModel):
     phone: int = Field(..., description="User phone number")
     password: str = Field(..., min_length=1, description="User password")
+    fcm_token: Optional[str] = Field(None, description="FCM token of the logging in device")
+    device_info: Optional[str] = Field(None, description="Friendly device description")
 
     @field_validator('phone')
     @classmethod

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status, File, UploadFile, Body
 from fastapi.responses import JSONResponse
 from typing import List, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import uuid
 import logging
 import json
@@ -117,12 +117,25 @@ async def logout(fcm_token: Optional[str] = Body(None, embed=True)):
         logger.info(f"FCM token removed during logout: {fcm_token}")
     return {"message": "Logged out successfully and FCM token removed"}
 
+def ensure_login_requests_columns():
+    try:
+        execute_query("ALTER TABLE login_requests ADD COLUMN access_token VARCHAR(500) DEFAULT NULL")
+        logger.info("Checked/Added access_token column to login_requests")
+    except Exception:
+        pass
+    try:
+        execute_query("ALTER TABLE login_requests ADD COLUMN expires_at TIMESTAMP NULL DEFAULT NULL")
+        logger.info("Checked/Added expires_at column to login_requests")
+    except Exception:
+        pass
+
 @router.post("/auth/login-requests/{request_id}/respond", tags=["Authentication"])
 async def respond_to_login_request(request_id: str, response_data: dict = Body(...)):
     """
     Old device responds (Approve/Reject) to a login request from a new device.
     Response data: {"action": "APPROVE" or "REJECT"}
     """
+    ensure_login_requests_columns()
     action = response_data.get("action")
     if action not in ["APPROVE", "REJECT"]:
         raise HTTPException(status_code=400, detail="Invalid action. Use APPROVE or REJECT.")
@@ -132,12 +145,20 @@ async def respond_to_login_request(request_id: str, response_data: dict = Body(.
     if not req:
         raise HTTPException(status_code=404, detail="Pending login request not found or already processed")
 
+    # Check expiration
+    expires_at = req.get('expires_at')
+    if expires_at and expires_at < datetime.now():
+        execute_query("UPDATE login_requests SET status = 'EXPIRED' WHERE request_id = %s", (request_id,))
+        logger.warning(f"Login request {request_id} expired. Marked as EXPIRED.")
+        raise HTTPException(status_code=400, detail="Login request has expired")
+
     user_id = req['user_id']
     user_type = req['user_type']
     new_token = req['new_fcm_token']
 
     if action == "REJECT":
         execute_query("UPDATE login_requests SET status = 'REJECTED' WHERE request_id = %s", (request_id,))
+        logger.info(f"Login request {request_id} rejected for {user_type} {user_id}")
         # Optional: Notify new device that it was rejected
         await notification_service.send_to_device(
             title="Login Denied",
@@ -149,7 +170,22 @@ async def respond_to_login_request(request_id: str, response_data: dict = Body(.
         return {"message": "Login request rejected"}
 
     # action == "APPROVE"
-    execute_query("UPDATE login_requests SET status = 'APPROVED' WHERE request_id = %s", (request_id,))
+    # Fetch phone to generate token
+    phone = None
+    if user_type == 'parent':
+        user_info = execute_query("SELECT phone FROM parents WHERE parent_id = %s", (user_id,), fetch_one=True)
+        phone = user_info['phone'] if user_info else None
+    else:
+        user_info = execute_query("SELECT phone FROM drivers WHERE driver_id = %s", (user_id,), fetch_one=True)
+        phone = user_info['phone'] if user_info else None
+
+    # Generate access token AFTER approval
+    access_token = create_access_token(
+        data={"sub": user_id, "user_type": user_type, "phone": phone}
+    )
+
+    execute_query("UPDATE login_requests SET status = 'APPROVED', access_token = %s WHERE request_id = %s", (access_token, request_id))
+    logger.info(f"Login request {request_id} approved for {user_type} {user_id}. Access token generated.")
 
     # 2. Get OLD token to notify logout
     old_token = None
@@ -178,18 +214,41 @@ async def respond_to_login_request(request_id: str, response_data: dict = Body(.
         body="Your login has been approved. You can now use the app on this device.",
         token=new_token,
         recipient_type=user_type,
-        message_type="text"
+        message_type="text",
+        data={"access_token": access_token, "token_type": "bearer"}
     )
 
     return {"message": "Login request approved, tokens swapped"}
 
 @router.get("/auth/login-requests/{request_id}", tags=["Authentication"])
 async def get_login_request_status(request_id: str):
-    """Check the status of a pending login request"""
-    req = execute_query("SELECT status, user_id FROM login_requests WHERE request_id = %s", (request_id,), fetch_one=True)
+    """Check the status of a pending login request and retrieve token if approved"""
+    ensure_login_requests_columns()
+    req = execute_query("SELECT * FROM login_requests WHERE request_id = %s", (request_id,), fetch_one=True)
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
-    return req
+    
+    status = req['status']
+    expires_at = req.get('expires_at')
+    
+    if status == 'PENDING' and expires_at and expires_at < datetime.now():
+        execute_query("UPDATE login_requests SET status = 'EXPIRED' WHERE request_id = %s", (request_id,))
+        status = 'EXPIRED'
+        logger.warning(f"Checked status for {request_id}: expired.")
+
+    response = {
+        "status": status,
+        "user_id": req['user_id']
+    }
+    
+    if status == 'APPROVED':
+        response["access_token"] = req.get("access_token")
+        response["token_type"] = "bearer"
+        # Claim token - make it single use
+        execute_query("UPDATE login_requests SET status = 'CLAIMED' WHERE request_id = %s", (request_id,))
+        logger.info(f"Access token claimed for request {request_id}. Status set to CLAIMED.")
+        
+    return response
 
 
 @router.get("/auth/admin/profile/phone/{phone}", tags=["Authentication"], response_model=AdminResponse)

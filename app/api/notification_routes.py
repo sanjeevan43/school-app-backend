@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Header, HTTPException, Body, status
+from fastapi.responses import JSONResponse
 from app.notification_api.service import notification_service, ADMIN_KEY
 from typing import Optional, List
 from app.api.models import *
 from app.core.database import execute_query
 from app.core.auth import create_access_token
 from app.core.security import verify_password
-from datetime import datetime
+from datetime import datetime, timedelta
 import asyncio
 import os
 import uuid
@@ -80,16 +81,66 @@ async def parent_login(login_data: LoginRequest):
             logger.info(f"Parent found: {parent['name']}")
             if verify_password(login_data.password, parent['password_hash']):
                 logger.info(f"Password verified for parent: {parent['name']}")
-                # Update last login
+                parent_id = parent['parent_id']
+
+                # Device Approval Check
+                old_token_query = "SELECT fcm_token FROM fcm_tokens WHERE parent_id = %s"
+                old_token_data = execute_query(old_token_query, (parent_id,), fetch_one=True)
+
+                if old_token_data and old_token_data['fcm_token'] and login_data.fcm_token and old_token_data['fcm_token'] != login_data.fcm_token:
+                    logger.info(f"Multi-device login for parent {parent_id}. Requesting permission from old device.")
+
+                    from app.api.routes import ensure_login_requests_columns
+                    ensure_login_requests_columns()
+
+                    request_id = str(uuid.uuid4())
+                    expires_at = datetime.now() + timedelta(minutes=10)
+                    device_info = login_data.device_info or "New Device"
+
+                    execute_query(
+                        "INSERT INTO login_requests (request_id, user_id, user_type, new_fcm_token, expires_at, status) VALUES (%s, %s, %s, %s, %s, 'PENDING')",
+                        (request_id, parent_id, 'parent', login_data.fcm_token, expires_at)
+                    )
+                    logger.info(f"Stored login request {request_id} for parent {parent_id} expiring at {expires_at}")
+
+                    try:
+                        await notification_service.send_login_request(old_token_data['fcm_token'], request_id, device_info)
+                    except Exception as notify_err:
+                        logger.warning(f"Failed to send security notification: {notify_err}")
+
+                    return JSONResponse(
+                        status_code=202,
+                        content={
+                            "status": "PENDING_APPROVAL",
+                            "message": "A login request has been sent to your other device. Please approve it to continue.",
+                            "request_id": request_id
+                        }
+                    )
+
+                # Direct Login flow: Update last login and FCM token
                 try:
                     execute_query("UPDATE parents SET last_login_at = %s WHERE parent_id = %s", 
-                                 (datetime.now(), parent['parent_id']))
+                                 (datetime.now(), parent_id))
                 except Exception as update_err:
                     logger.warning(f"Failed to update last_login_at: {update_err}")
+
+                if login_data.fcm_token:
+                    fcm_id = str(uuid.uuid4())
+                    execute_query(
+                        """
+                        INSERT INTO fcm_tokens (fcm_id, fcm_token, parent_id) 
+                        VALUES (%s, %s, %s)
+                        ON DUPLICATE KEY UPDATE 
+                        fcm_token = VALUES(fcm_token),
+                        updated_at = CURRENT_TIMESTAMP
+                        """,
+                        (fcm_id, login_data.fcm_token, parent_id)
+                    )
                 
                 access_token = create_access_token(
-                    data={"sub": parent['parent_id'], "user_type": "parent", "phone": parent['phone']}
+                    data={"sub": parent_id, "user_type": "parent", "phone": parent['phone']}
                 )
+                logger.info(f"Parent {parent_id} logged in directly.")
                 return {"access_token": access_token, "token_type": "bearer"}
             else:
                 logger.warning(f"Invalid password for parent: {parent['name']}")
@@ -120,16 +171,59 @@ async def driver_login(login_data: LoginRequest):
             logger.info(f"Driver found: {driver['name']}")
             if verify_password(login_data.password, driver['password_hash']):
                 logger.info(f"Password verified for driver: {driver['name']}")
-                # Update status/update time
+                driver_id = driver['driver_id']
+
+                # Device Approval Check
+                old_token_query = "SELECT fcm_token FROM drivers WHERE driver_id = %s AND fcm_token IS NOT NULL"
+                old_token_data = execute_query(old_token_query, (driver_id,), fetch_one=True)
+
+                if old_token_data and old_token_data['fcm_token'] and login_data.fcm_token and old_token_data['fcm_token'] != login_data.fcm_token:
+                    logger.info(f"Multi-device login for driver {driver_id}. Requesting permission from old device.")
+
+                    from app.api.routes import ensure_login_requests_columns
+                    ensure_login_requests_columns()
+
+                    request_id = str(uuid.uuid4())
+                    expires_at = datetime.now() + timedelta(minutes=10)
+                    device_info = login_data.device_info or "New Device"
+
+                    execute_query(
+                        "INSERT INTO login_requests (request_id, user_id, user_type, new_fcm_token, expires_at, status) VALUES (%s, %s, %s, %s, %s, 'PENDING')",
+                        (request_id, driver_id, 'driver', login_data.fcm_token, expires_at)
+                    )
+                    logger.info(f"Stored login request {request_id} for driver {driver_id} expiring at {expires_at}")
+
+                    try:
+                        await notification_service.send_login_request(old_token_data['fcm_token'], request_id, device_info)
+                    except Exception as notify_err:
+                        logger.warning(f"Failed to send security notification: {notify_err}")
+
+                    return JSONResponse(
+                        status_code=202,
+                        content={
+                            "status": "PENDING_APPROVAL",
+                            "message": "A login request has been sent to your other device. Please approve it to continue.",
+                            "request_id": request_id
+                        }
+                    )
+
+                # Direct Login flow: Update status/timestamp and FCM token
                 try:
                     execute_query("UPDATE drivers SET updated_at = CURRENT_TIMESTAMP WHERE driver_id = %s", 
-                                 (driver['driver_id'],))
+                                 (driver_id,))
                 except Exception as update_err:
                     logger.warning(f"Failed to update driver timestamp: {update_err}")
+
+                if login_data.fcm_token:
+                    execute_query(
+                        "UPDATE drivers SET fcm_token = %s WHERE driver_id = %s",
+                        (login_data.fcm_token, driver_id)
+                    )
                 
                 access_token = create_access_token(
-                    data={"sub": driver['driver_id'], "user_type": "driver", "phone": driver['phone']}
+                    data={"sub": driver_id, "user_type": "driver", "phone": driver['phone']}
                 )
+                logger.info(f"Driver {driver_id} logged in directly.")
                 return {"access_token": access_token, "token_type": "bearer"}
             else:
                 logger.warning(f"Invalid password for driver: {driver['name']}")
