@@ -113,16 +113,8 @@ class BusTrackingService:
         return self._cached_admin_id
 
     def _log_notification(self, title: str, message: str, route_id: str, location_name: str = None):
-        """Helper to log notification to admin_parent_notifications table"""
-        try:
-            admin_id = self._get_system_admin_id()
-            if admin_id:
-                execute_query(
-                    "INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, location_name, sent_by_admin_id) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                    (str(uuid.uuid4()), title, message, "LOCATION", route_id, location_name, admin_id)
-                )
-        except Exception as e:
-            logger.warning(f"Failed to log notification: {e}")
+        """Helper to log notification to admin_parent_notifications table (Disabled per user request)"""
+        pass
 
     async def update_bus_location(self, trip_id: str, latitude: float, longitude: float):
         """Automatic bus tracking - handle stop progression and trip completion"""

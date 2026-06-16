@@ -653,10 +653,15 @@ async def get_notifications_by_parent(parent_id: str):
             AND (rs.stop_id = s.pickup_stop_id OR rs.stop_id = s.drop_stop_id)
         ))
     )
-    WHERE n.recipient_type = 'ALL' 
+    WHERE (n.recipient_type = 'ALL' 
        OR n.recipient_type = 'PARENT_DIRECT' AND n.recipient_id = %s
        OR s.parent_id = %s 
-       OR s.s_parent_id = %s
+       OR s.s_parent_id = %s)
+       AND n.title NOT LIKE '🚌%'
+       AND n.title NOT LIKE '✅%'
+       AND n.title NOT LIKE '%Bus%'
+       AND n.title NOT LIKE '%Arrived%'
+       AND n.title NOT LIKE '%Approaching%'
     ORDER BY n.created_at DESC
     """
     notifications = execute_query(query, (parent_id, parent_id, parent_id), fetch_all=True)
@@ -3112,14 +3117,7 @@ async def create_trip(trip: TripCreate):
                     message_type="audio"
                 )
                 
-                # Log in history
-                admin_res = execute_query("SELECT admin_id FROM admins WHERE status = 'ACTIVE' LIMIT 1", fetch_one=True)
-                admin_id = admin_res['admin_id'] if admin_res else None
-                if admin_id:
-                    execute_query(
-                        "INSERT INTO admin_parent_notifications (notification_id, title, message, recipient_type, route_id, sent_by_admin_id) VALUES (%s, %s, %s, %s, %s, %s)",
-                        (str(uuid.uuid4()), title, body, "ROUTE", trip.route_id, admin_id)
-                    )
+                pass
         except Exception as notify_err:
             logger.warning(f"Failed to send scheduled trip notification: {notify_err}")
 
