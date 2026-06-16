@@ -46,7 +46,7 @@ def test_parent_direct_login(client, mock_db_cursor, mocker):
 
 
 def test_parent_multi_device_login_pending(client, mock_db_cursor, mocker):
-    """If different FCM token exists, login returns PENDING_APPROVAL and no access token."""
+    """If different FCM token exists, login returns waiting_for_approval and no access token."""
     mocker.patch("app.api.notification_routes.verify_password", return_value=True)
     mocker.patch("app.api.routes.ensure_login_requests_columns")
     
@@ -77,7 +77,7 @@ def test_parent_multi_device_login_pending(client, mock_db_cursor, mocker):
     response = client.post("/api/v1/auth/parent/login", json=payload, headers=HEADERS)
     assert response.status_code == status.HTTP_202_ACCEPTED
     data = response.json()
-    assert data["status"] == "PENDING_APPROVAL"
+    assert data["status"] == "waiting_for_approval"
     assert "request_id" in data
     assert "access_token" not in data
 

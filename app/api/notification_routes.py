@@ -111,7 +111,7 @@ async def parent_login(login_data: LoginRequest):
                     return JSONResponse(
                         status_code=202,
                         content={
-                            "status": "PENDING_APPROVAL",
+                            "status": "waiting_for_approval",
                             "message": "A login request has been sent to your other device. Please approve it to continue.",
                             "request_id": request_id
                         }
@@ -201,7 +201,7 @@ async def driver_login(login_data: LoginRequest):
                     return JSONResponse(
                         status_code=202,
                         content={
-                            "status": "PENDING_APPROVAL",
+                            "status": "waiting_for_approval",
                             "message": "A login request has been sent to your other device. Please approve it to continue.",
                             "request_id": request_id
                         }

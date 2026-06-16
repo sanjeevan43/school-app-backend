@@ -1002,7 +1002,7 @@ async def update_parent_fcm_token(parent_id: str, fcm_data: dict):
                 # The user will have to manually approve or we handle the timeout
             
             return {
-                "status": "PENDING_APPROVAL",
+                "status": "waiting_for_approval",
                 "message": "A login request has been sent to your other device. Please approve it to continue.",
                 "request_id": request_id
             }
@@ -1325,7 +1325,7 @@ async def patch_driver_fcm_token(driver_id: str, fcm_data: dict):
             logger.warning(f"Failed to send security notification to old driver device: {notify_err}")
         
         return {
-            "status": "PENDING_APPROVAL",
+            "status": "waiting_for_approval",
             "message": "A login request has been sent to your other device. Please approve it to continue.",
             "request_id": request_id
         }
