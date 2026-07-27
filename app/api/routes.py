@@ -1145,6 +1145,12 @@ async def bulk_upload_parents_csv(file: UploadFile = File(...)):
                     name = row.get('name')
                     phone = row.get('phone', '') # Keep as original (likely string or int)
                     email = row.get('email')
+                    if email:
+                        email = email.strip()
+                        if email.lower() in ["", "none", "null", "undefined"]:
+                            email = None
+                    else:
+                        email = None
                     role = row.get('parent_role', 'GUARDIAN').upper()
                     
                     if not name or not phone:
