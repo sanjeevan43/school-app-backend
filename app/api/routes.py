@@ -1721,24 +1721,24 @@ async def update_route_stop(stop_id: str, stop_update: RouteStopUpdate):
             raise HTTPException(status_code=404, detail="Route stop not found")
         
         # Validation for Pickup Order
-        if stop_update.pickup_stop_order is not None and stop_update.pickup_stop_order != old_stop['pickup_stop_order']:
+        if stop_update.pickup_stop_order is not None:
             new_p = stop_update.pickup_stop_order
             max_p_data = execute_query(
-                "SELECT MAX(pickup_stop_order) as max_p FROM route_stops WHERE route_id = %s",
+                "SELECT COUNT(*) as stop_count FROM route_stops WHERE route_id = %s",
                 (old_stop['route_id'],), fetch_one=True
             )
-            max_p = max_p_data['max_p'] if max_p_data and max_p_data['max_p'] else 1
+            max_p = max_p_data['stop_count'] if max_p_data and max_p_data['stop_count'] else 1
             if new_p < 1 or new_p > max_p:
                 raise HTTPException(status_code=400, detail=f"Invalid pickup order. Must be between 1 and {max_p}.")
 
         # Validation for Drop Order
-        if stop_update.drop_stop_order is not None and stop_update.drop_stop_order != old_stop['drop_stop_order']:
+        if stop_update.drop_stop_order is not None:
             new_d = stop_update.drop_stop_order
             max_d_data = execute_query(
-                "SELECT MAX(drop_stop_order) as max_d FROM route_stops WHERE route_id = %s",
+                "SELECT COUNT(*) as stop_count FROM route_stops WHERE route_id = %s",
                 (old_stop['route_id'],), fetch_one=True
             )
-            max_d = max_d_data['max_d'] if max_d_data and max_d_data['max_d'] else 1
+            max_d = max_d_data['stop_count'] if max_d_data and max_d_data['stop_count'] else 1
             if new_d < 1 or new_d > max_d:
                 raise HTTPException(status_code=400, detail=f"Invalid drop order. Must be between 1 and {max_d}.")
 
