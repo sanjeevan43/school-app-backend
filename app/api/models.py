@@ -17,6 +17,16 @@ def phone_validator(v: Any) -> int:
             raise ValueError('Invalid phone number format')
     return v
 
+def email_validator(v: Any) -> Any:
+    if v in [None, "", "string", "null", "undefined"]:
+        return None
+    if isinstance(v, str):
+        v_stripped = v.strip()
+        if not v_stripped or v_stripped.lower() in ["string", "null", "undefined"]:
+            return None
+        return v_stripped
+    return v
+
 class BulkCreateResponse(BaseModel):
     total: int
     success: int
@@ -118,6 +128,11 @@ class AdminBase(BaseModel):
     def validate_phone(cls, v):
         return phone_validator(v)
 
+    @field_validator('email', mode='before')
+    @classmethod
+    def validate_email(cls, v):
+        return email_validator(v)
+
 
 class AdminCreate(AdminBase):
     pass
@@ -133,6 +148,11 @@ class AdminUpdate(BaseModel):
     @classmethod
     def validate_phone(cls, v):
         return phone_validator(v) if v is not None else v
+
+    @field_validator('email', mode='before')
+    @classmethod
+    def validate_email(cls, v):
+        return email_validator(v)
 
 
 class AdminResponse(BaseModel):
@@ -164,6 +184,11 @@ class ParentBase(BaseModel):
     def validate_phone(cls, v):
         return phone_validator(v)
 
+    @field_validator('email', mode='before')
+    @classmethod
+    def validate_email(cls, v):
+        return email_validator(v)
+
 
 class ParentCreate(ParentBase):
     pass  # Password will be auto-generated
@@ -188,6 +213,11 @@ class ParentUpdate(BaseModel):
     @classmethod
     def validate_phone(cls, v):
         return phone_validator(v) if v is not None else v
+
+    @field_validator('email', mode='before')
+    @classmethod
+    def validate_email(cls, v):
+        return email_validator(v)
 
 
 class ParentResponse(BaseModel):
@@ -223,6 +253,11 @@ class DriverBase(BaseModel):
     def validate_phone(cls, v):
         return phone_validator(v)
 
+    @field_validator('email', mode='before')
+    @classmethod
+    def validate_email(cls, v):
+        return email_validator(v)
+
 
 class DriverCreate(DriverBase):
     pass  # Password will be auto-generated
@@ -241,6 +276,11 @@ class DriverUpdate(BaseModel):
     @classmethod
     def validate_phone(cls, v):
         return phone_validator(v) if v is not None else v
+
+    @field_validator('email', mode='before')
+    @classmethod
+    def validate_email(cls, v):
+        return email_validator(v)
 
 
 class DriverResponse(BaseModel):
