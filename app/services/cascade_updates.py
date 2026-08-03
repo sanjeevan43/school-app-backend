@@ -311,11 +311,9 @@ class CascadeUpdateService:
                     raise ValueError("Cannot delete bus: Has active or upcoming trips")
 
             elif table == "classes":
-                # Check for students
-                students = execute_query("SELECT name FROM students WHERE class_id = %s", (record_id,), fetch_all=True)
-                if students:
-                    student_names = ", ".join([s['name'] for s in students])
-                    raise ValueError(f"Cannot delete class: Assigned to students ({student_names})")
+                # Clear class assignments for students in this class instead of blocking deletion
+                execute_query("UPDATE students SET class_id = NULL WHERE class_id = %s", (record_id,))
+                logger.info(f"Unassigned students from deleted class {record_id}")
             
             logger.info(f"Completed delete cascades for {table} {record_id}")
             return True
